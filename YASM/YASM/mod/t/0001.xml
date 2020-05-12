@@ -1,0 +1,19 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<language>
+  <page id="966602" title="" descr="0" voice="no">
+    <!--1 - 199 reserved for notifications-->
+    <!--200 - 399 reserved for station mule stuff-->
+    <t id="200">YASM! Station Mule</t>
+    <t id="201">Hauls goods for the home station. When a trade partner is set it will haul goods primarily between them. Otherwise it will try to haul from the Home station to all player owned stations in its range. Will only ever trade with player stations.</t>
+    <t id="202">The station that this mule will be exchanging wares for.</t>
+    <t id="203">The primary station to trade with on behalf of the home station.</t>
+    <t id="204">Make this ship a subordinate of the home station.</t>
+    <t id="205">Add wares the home station is selling be added to the trade partner station. Ignored if no trade partner station is set.</t>
+    <t id="206">This ship will be allowed to haul illegal wares.</t>
+    <t id="207"></t>
+    <t id="208">This ship will roam and serve other stations within its range when it has nothing better to do.</t>
+    <t id="209">The absolute maximum allowed jump distance this ship will travel when transporting for other, not defined stations (supplying home from non-trade partner, or roaming). Pilot skill may further limit the range, but it will never allow for more than this value.</t>
+    <t id="210">If any wares are set here, the ship will only haul them. This should not be used normally, since adding wares that aren't available from the home or trade partner stations will result in an idle mule. This will override illegality setting.</t>
+    <t id="230">Ship is not a valid type for this order.</t>
+  </page>
+</language>
