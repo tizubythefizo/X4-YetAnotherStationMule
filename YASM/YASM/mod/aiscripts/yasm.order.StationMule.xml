@@ -3,28 +3,33 @@
 <aiscript name="yasm.order.StationMule" version="1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="aiscripts.xsd">
   <order id="YetAnotherStationMule" name="{966602,200}" description="{966602,201}" category="trade" infinite="true">
     <params>
-      <param name="HomeStation" required="true" type="object" default="null" text="{966602,202}" comment="The home station this mule works for.">
+      <param name="homeStation" required="true" type="object" default="null" text="{966602,202}" comment="The home station this mule works for.">
         <input_param name="class" value="[class.station]"/>
       </param>
-      <param name="TradePartnerStation" required="false" type="object" default="null" text="{966602,203}" comment="The designated primary trade partner station to trade with on behalf of the home station.">
+      <param name="tradePartnerStation" required="false" type="object" default="null" text="{966602,203}" comment="The designated primary trade partner station to trade with on behalf of the home station.">
         <input_param name="class" value="[class.station]"/>
-        <input_param name="owner" value="[]"/>
+         <!--Doesn't seem to do anything in the UI. Can still select other stations. Need to file a bug report.-->
+        <input_param name="owner" value="this.object.owner"/>
       </param>
-      <param name="MakeSubordinateToHomeStation" required="false" type="bool" default="true" text="{96602,204}" comment="Whether this ship should become a subordinate ship of the home station or not." />
-      <param name="AddWaresToTradePartner" required="false" type="bool" default="true" text="{966602,205}" comment="Whether to add product wares the home station is selling to the trade partner or not" />
-      <param name="TransportIllegalWares" required="false" type="bool" default="false" text="{966602,206}" comment="Whether the ship is allowed to haul illegal goods or not." />
-      <param name="ExportToOtherStationsFirst" required="false" type="bool" default="true" text="{966202,207}" comment="Try to deliver exports to other stations in range that need them before hauling to trade partner." />
-      <param name="ServiceOtherStationsWhenIdle" required="false" type="bool" default="false" text="{966602,208}" comment="Whether this ship should attempt to service other stations (roam) when it has nothing else to do." />
-      <param name="MaxJumpRange" required="false" type="number" default="0"  text="{966602,209}" comment="The absolute maximum jumping range to be considered for roaming transports">
-        <!-- We don't want mules covering large areas of space. So the maximum a station mule will ever travel will be 5 jumps. Use a roaming mule for farther distance.-->
+      <param name="makeSubordinateToHomeStation" required="false" type="bool" default="true" text="{966602,204}" comment="Whether this ship should become a subordinate ship of the home station or not." />
+      <param name="addWaresToTradePartner" required="false" type="bool" default="true" text="{966602,205}" comment="Whether to add product wares the home station is selling to the trade partner or not" />
+      <param name="transportIllegalWares" required="false" type="bool" default="false" text="{966602,206}" comment="Whether the ship is allowed to haul illegal goods or not." />
+      <param name="exportToOtherStationsFirst" required="false" type="bool" default="true" text="{966602,207}" comment="Try to deliver exports to other stations in range that need them before hauling to trade partner." />
+      <param name="serviceOtherStationsWhenIdle" required="false" type="bool" default="false" text="{966602,208}" comment="Whether this ship should attempt to service other stations (roam) when it has nothing else to do." />
+      <param name="maxJumpRange" required="false" type="number" default="0"  text="{966602,209}" comment="The absolute maximum jumping range to be considered for roaming transports">
+         <!--We don't want mules covering large areas of space. So the maximum a station mule will ever travel will be 5 jumps. Use a roaming mule for farther distance.-->
         <input_param name="startvalue" value="0"/>
         <input_param name="min" value="0"/>
         <input_param name="max" value="5"/>
         <input_param name="step" value ="1"/>
       </param>
-      <param name="WareWhitelist" required="false" type="list" default="null" text="{966602,209}" comment="Allows the user to whitelist wares. When set only these wares will be looked at." />
+      <!-- This is currently bugged. A wares list after a required parameter breaks the UI for default orders (throws an onClick error). -->
+      <!--<param name="WareWhitelist" required="false" default="null" type="list" text="{966602,210}" comment="Allows the player to limit what wares the station mule will haul. When set only these wares will be looked at, even if they aren't offered at the home or trade partner.">
+        <input_param name="type" value="'ware'" />
+        <input_param name="cancarry" value="this.ship" />
+      </param>-->
     </params>
-    <requires text="{966602, 210}" comment="Whitelist of ship types that are eligible for this order.">
+    <requires text="{966602, 230}" comment="Whitelist of ship types that are eligible for this order.">
       <match_any>
         <match shiptype="shiptype.courier" />
         <match shiptype="shiptype.miner" />
@@ -45,11 +50,50 @@
     <handler ref="TargetInvalidHandler" />
   </interrupts>
   <init>
+    <debug_text text="'YASM Station Mule Init'" filter="general" chance="100"/>
+    
+    <set_value name="$debugChance" exact="100"/>
+    <set_value name="$debugFileName" exact="'yasm_stationmule_%1_%2.log'.[this.ship.name, this.ship.idcode]"/>
+    <set_value name="$debugFileDirectory" exact="'yasm'"/>
+    
+    <debug_text text="'YASM Station mule log file' + $debugFileName" chance="100"/>
+    <debug_text text="'YASM Station mule log directory' + $debugFileDirectory" chance="100"/>
+    
     <set_command_action commandaction="commandaction.standingby" />
+
+    <include_interrupt_actions ref="GetBlacklistgroup"/>
   </init>
   <attention min="unknown">
     <actions>
+      <!-- Parameter Validation. -->
+      
       <!-- First check if this ship should be a subordinate of the home station, and if so add it as such if it's not already a subordinate. -->
+      <debug_text text="'YASM - About to check to make subordinate.'" filter="general" chance="100"/>
+      <do_if value="$makeSubordinateToHomeStation">
+        <set_value name="$madeSubordinateErrorFree" exact="false"/>
+        <set_value name="$makeSubordinateErrorMessage" exact="''"/>
+        <set_value name="$wasSubordinateAssigned" exact="false"/>
+
+        <debug_text text="'YASM - Calling to make subordinate.'" filter="general" chance="100"/>
+        <run_script name="yasm.lib.MakeSubordinate">
+          <param name="commander" value="$HomeStation"/>
+          <param name="subordinate" value="this.ship"/>
+          <!-- Need to see if my diff into assignments.xml actually worked. -->
+          <param name="assignment" value="assignment.yasmStationMule"/>
+          <save_retval name="wasErrorFree" variable="$madeSubordinateErrorFree"/>
+          <save_retval name="errorMessage" variable="$makeSubordinateErrorMessage"/>
+          <save_retval name="subordinateAssigned" variable="$wasSubordinateAssigned"/>
+        </run_script>
+
+        <do_if value="$madeSubordinateErrorFree == false">
+          <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM ERROR!] Error hit when trying to make this ship (name: %1 - id: %2) a subordinate of station (name: %3 - id: %4). Error Message: %5'.[this.ship.name, this.ship.idcode, $homeStation.name, $homeStation.idcode, $makeSubordinateErrorMessage]" chance="$debugChance" />
+        </do_if>
+      </do_if>
+      
+      <!-- 
+            Need to determine if this is currently serving a station that's being built, which is a special case. We'll want the station mule to one way trade for the build storage in this case.
+            I should probably make "build storage mule" it's own order (that supports a single target station, as well as roaming) and just call that.
+      -->
       
       <!-- Next check if any wares need to be added from the home station to the trade partner if the related parameter is true. -->
 

@@ -22,6 +22,7 @@
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <X4ExtensionsFolder>$(X4_Exentions)</X4ExtensionsFolder>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <PlatformTarget>AnyCPU</PlatformTarget>
@@ -48,10 +49,15 @@
     </None>
   </ItemGroup>
   <ItemGroup>
+    <Content Include="mod\aiscripts\yasm.lib.MakeSubordinate.xml" />
     <Content Include="mod\aiscripts\yasm.order.RoamingMule.xml" />
     <Content Include="mod\aiscripts\yasm.order.StationMule.xml" />
     <Content Include="mod\content.xml" />
+    <Content Include="mod\libraries\assignments.xml" />
     <Content Include="mod\t\0001.xml" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <PropertyGroup>
+    <PostBuildEvent>xcopy "$(ProjectDir)mod" "$(X4ExtensionsFolder)\yasm\" /s /y /e</PostBuildEvent>
+  </PropertyGroup>
 </Project>

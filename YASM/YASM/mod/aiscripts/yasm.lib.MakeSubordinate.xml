@@ -1,0 +1,100 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<!-- Makes the passed in ship a subordinate of the passed in commander so long as the ship isn't already assigned to the commander. -->
+<aiscript name="yasm.lib.MakeSubordinate" version="1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="aiscripts.xsd">
+  <params>
+    <param name="commander" default="null" comment="Required: The object which will be the new commander. Can be a ship or a station."/>
+    <param name ="subordinate" default="null" comment="Required: The object which is to be the subordinate. As of now, only ships can be subordinates."/>
+    <param name="assignment" default="null" comment ="Optional: The assignment to set the subordinate to."/>
+    <param name="subordinateGroupId" default="null" comment="Optional: The group ID to assign the subordinate to. Will set the sub group to the assignment if both are included."/>
+  </params>
+  <init>
+    <!-- Indicates whether the operation was successful or if an error was encountered -->
+    <set_value name="$successResult" exact="false"/>
+    <set_value name="$wasSubordinateAssigned" exact="false"/>
+    <set_value name="$errorMessage" exact="'No Errors.'"/>
+  </init>
+  <attention min="unknown">
+    <actions>
+      <debug_text text="'YASM Make Sub Parameter validation'" filter="general" chance="100"/>
+      <!-- Parameter Validation. -->
+      <do_if value="$commander? == false or ($commander.isclass.station == false and $commander.isclass.ship == false)">
+        <set_value name="$errorMessage" exact="'[yasm.lib.MakeSubordinate] commander parameter was null or not a ship or station.'"/>
+
+        <return>
+          <retval name="wasErrorFree" value="$successResult"/>
+          <retval name="subordinateAssigned" value="$wasSubordinateAssigned"/>
+          <retval name="errorMessage" value="$errorMessage"/>
+        </return>
+      </do_if>
+
+      <do_if value="$subordinate? == false or $subordinate.isclass.ship == false">
+        <set_value name="$errorMessage" exact="'[yasm.lib.MakeSubordinate] subordinate parameter was null or not a ship.'"/>
+
+        <return>
+          <retval name="wasErrorFree" value="$successResult"/>
+          <retval name="subordinateAssigned" value="$wasSubordinateAssigned"/>
+          <retval name="errorMessage" value="$errorMessage"/>
+        </return>
+      </do_if>
+
+      <do_if value="$assignment? == true and typeof $assignment != datatype.assignment">
+        <!-- Wonder if it's smart enough to implicitly convert any and every type to string.-->
+        <set_value name="$errorMessage" exact="'[yasm.lib.MakeSubordinate] assignment parameter is provide, but not a valid assignment. [assignment] {%1}'.[$assignment]"/>
+
+        <return>
+          <retval name="wasErrorFree" value="$successResult"/>
+          <retval name="subordinateAssigned" value="$wasSubordinateAssigned"/>
+          <retval name="errorMessage" value="$errorMessage"/>
+        </return>
+      </do_if>
+
+      <do_if value="$subordinateGroupId? == true and ((typeof $subordinateGroupId).isnumeric == false or $subordinateGroupId lt 1)">
+        <set_value name="$errorMessage" exact="'[yasm.lib.MakeSubordinate] subordinateGroupId was provided, but was non-numeric. [subordinateGroupId] {1}'.[$subordinateGroupId]"/>
+
+        <return>
+          <retval name="wasErrorFree" value="$successResult"/>
+          <retval name="subordinateAssigned" value="$wasSubordinateAssigned"/>
+          <retval name="errorMessage" value="$errorMessage"/>
+        </return>
+      </do_if>
+
+      <debug_text text="'YASM MakeSubordinate parameters valid.'" filter="general" chance="100"/>
+
+      <do_if value="$subordinate.commander != $commander">
+        <do_if value="$subordinateGroupId? == true and $assignment? == true">
+          <set_subordinate_group_assignment object="$subordinate" commander="$commander" subordinategroupid="$subordinateGroupId" assignment="$assignment"/>
+        </do_if>
+        
+        <do_if value="$subordinateGroupId? == true">
+          <set_object_commander object="$subordinate" commander="$commander" subordinategroupid="$subordinateGroupId"/>
+        </do_if>
+        <do_elseif value="$assignment? == true">
+          <debug_text text="'YASM MakeSubordinate making subordinate with assignment %1.'.[$assignment]" filter="general" chance="100"/>
+          <set_object_commander object="$subordinate" commander="$commander" assignment="$assignment"/>
+        </do_elseif>
+        <do_else>
+          <set_object_commander object="$subordinate" commander="$commander" />
+        </do_else>
+
+        <set_value name="$successResult" exact="true"/>
+        <set_value name="$wasSubordinateAssigned" exact="true"/>
+
+        <return>
+          <retval name="wasErrorFree" value="$successResult"/>
+          <retval name="subordinateAssigned" value="$wasSubordinateAssigned"/>
+          <retval name="errorMessage" value="$errorMessage"/>
+        </return>
+      </do_if>
+      <do_else>
+        <!-- Commander is the same, no need to re-assign it. This should normally never happen anyways, but as a reusable function others can use it outside my intended usage. -->
+        <set_value name="$successResult" exact="true"/>
+        
+        <return>          
+          <retval name="wasErrorFree" value="$successResult"/>
+          <retval name="subordinateAssigned" value="$wasSubordinateAssigned"/>
+          <retval name="errorMessage" value="$errorMessage"/>
+        </return>
+      </do_else>      
+    </actions>
+  </attention>
+</aiscript>

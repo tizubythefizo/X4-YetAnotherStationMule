@@ -1,14 +1,14 @@
 ﻿<?xml version="1.0" encoding="utf-8" ?>
-<content id="Yet Another Station Mule (YASM!)" description="Another station mule to ferry wares between two stations." author="Tizuby" version="1" date="2020-05-11" save="false">
-  <text language="7" name="Automated Player Station Logistics (APSL)" description="Another station mule to ferry wares between two stations." author="Tizuby" />
-  <text language="33" name="Automated Player Station Logistics (APSL)" description="Another station mule to ferry wares between two stations." author="Tizuby" />
-  <text language="34" name="Automated Player Station Logistics (APSL)" description="Another station mule to ferry wares between two stations." author="Tizuby" />
-  <text language="39" name="Automated Player Station Logistics (APSL)" description="Another station mule to ferry wares between two stations." author="Tizuby" />
-  <text language="44" name="Automated Player Station Logistics (APSL)" description="Another station mule to ferry wares between two stations." author="Tizuby" />
-  <text language="49" name="Automated Player Station Logistics (APSL)" description="Another station mule to ferry wares between two stations." author="Tizuby" />
-  <text language="55" name="Automated Player Station Logistics (APSL)" description="Another station mule to ferry wares between two stations." author="Tizuby" />
-  <text language="81" name="Automated Player Station Logistics (APSL)" description="Another station mule to ferry wares between two stations." author="Tizuby" />
-  <text language="82" name="Automated Player Station Logistics (APSL)" description="Another station mule to ferry wares between two stations." author="Tizuby" />
-  <text language="86" name="Automated Player Station Logistics (APSL)" description="Another station mule to ferry wares between two stations." author="Tizuby" />
-  <text language="88" name="Automated Player Station Logistics (APSL)" description="Another station mule to ferry wares between two stations." author="Tizuby" />
+<content id="yasm" name="Yet Another Station Mule (YASM!)" description="Another station mule to ferry wares between two stations." author="Tizuby" version="1" date="2020-05-11" save="false">
+  <text language="7" name="Yet Another Station Mule (YASM!)" description="Another station mule to ferry wares between two stations." author="Tizuby" />
+  <text language="33" name="Yet Another Station Mule (YASM!)" description="Another station mule to ferry wares between two stations." author="Tizuby" />
+  <text language="34" name="Yet Another Station Mule (YASM!)" description="Another station mule to ferry wares between two stations." author="Tizuby" />
+  <text language="39" name="Yet Another Station Mule (YASM!)" description="Another station mule to ferry wares between two stations." author="Tizuby" />
+  <text language="44" name="Yet Another Station Mule (YASM!)" description="Another station mule to ferry wares between two stations." author="Tizuby" />
+  <text language="49" name="Yet Another Station Mule (YASM!)" description="Another station mule to ferry wares between two stations." author="Tizuby" />
+  <text language="55" name="Yet Another Station Mule (YASM!)" description="Another station mule to ferry wares between two stations." author="Tizuby" />
+  <text language="81" name="Yet Another Station Mule (YASM!)" description="Another station mule to ferry wares between two stations." author="Tizuby" />
+  <text language="82" name="Yet Another Station Mule (YASM!)" description="Another station mule to ferry wares between two stations." author="Tizuby" />
+  <text language="86" name="Yet Another Station Mule (YASM!)" description="Another station mule to ferry wares between two stations." author="Tizuby" />
+  <text language="88" name="Yet Another Station Mule (YASM!)" description="Another station mule to ferry wares between two stations." author="Tizuby" />
 </content>
