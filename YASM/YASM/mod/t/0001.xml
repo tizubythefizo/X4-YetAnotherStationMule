@@ -14,11 +14,13 @@
     <t id="205">Add Wares to Trade Partner</t>
     <t id="206">Haul Illegal Wares</t>
     <t id="207">Export to other stations first</t>
-    <t id="208">Roam if idle</t>
-    <t id="209">Max Jump Distance</t>
-    <t id="210">Ware Whitelist</t>
-    <!--  -->
+    <t id="208">Prioritize Build Storage</t>
+    <t id="209">Roam if idle</t>
+    <t id="210">Max Jump Distance</t>
+    <t id="211">Ware Whitelist</t>
+    <!-- Other stuff. -->
     <t id="230">Ship is not a valid type for this order.</t>
+    <t id="240">Wares added as trade wares to %1-%2</t>
     <!-- 400 - 599 reserved for roaming mule stuff-->
     <t id="400">YASM! Roaming Mule</t>
     <t id="401">Roams around from its home station within the set range looking for player to player hauls to fill.</t>

@@ -49,11 +49,14 @@
     </None>
   </ItemGroup>
   <ItemGroup>
+    <Content Include="mod\aiscripts\yasm.lib.AddStationTradewares.xml" />
+    <Content Include="mod\aiscripts\yasm.lib.FindOffersForWare.xml" />
     <Content Include="mod\aiscripts\yasm.lib.MakeSubordinate.xml" />
     <Content Include="mod\aiscripts\yasm.order.RoamingMule.xml" />
     <Content Include="mod\aiscripts\yasm.order.StationMule.xml" />
     <Content Include="mod\content.xml" />
     <Content Include="mod\libraries\assignments.xml" />
+    <Content Include="mod\libraries\icons.xml" />
     <Content Include="mod\t\0001.xml" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

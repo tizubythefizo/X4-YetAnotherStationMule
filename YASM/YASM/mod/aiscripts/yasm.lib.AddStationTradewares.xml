@@ -1,0 +1,63 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<!--  Adds wares to the target station as trade wares if they are not already present on the target station.-->
+<aiscript name="yasm.lib.AddStationTradewares" version="1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="aiscripts.xsd">
+  <params>
+    <param name="targetStation" default="null" comment="The target station to add tradewares to."/>
+    <param name ="sourceStationSellOffers" default="null" comment="A list of the current sell offers from the source station."/>
+  </params>
+  <init>
+    <set_value name="$successResult" exact="false"/>
+    <set_value name="$errorMessage" exact="null"/>
+  </init>
+  <attention min="unknown">
+    <actions>
+      <!-- Parameter Validation -->
+
+      <do_if value="$targetStation == null or not $targetStation.isclass.station">
+        <set_value name="$errorMessage" exact="'[yasm.lib.AddStationTradewares] target station is null or not a station!'"/>
+
+        <return>
+          <retval name="wasErrorFree" value="$successResult"/>
+          <retval name="errorMessage" value="$errorMessage"/>
+        </return>
+      </do_if>
+      
+      <do_if value="$sourceStationSellOffers == null or typeof $sourceStationSellOffers != datatype.list">
+        <set_value name="$errorMessage" exact="'[yasm.lib.AddStationTradewares] sourceStationSellOffers was null or not a list!'"/>
+
+        <return>
+          <retval name="wasErrorFree" value="$successResult"/>
+          <retval name="errorMessage" value="$errorMessage"/>
+        </return>
+      </do_if>
+      
+      <!-- Main Logic -->
+      <!-- 
+            So with the new trade restriction stuff, along with some previous updates it's possible for intermediate wares to be sold, and it's possible for the player to
+            set up restrictions such that its own ships can't even trade a given ware at a station. While it is ultimately possible to check all of this from the station's
+            properties, it's actually less complex and probably more performant to just check sell offers for the source. This has the added benefit of lazy-loading wares, as they'll
+            only be added to the target once the source station is actually exporting them.
+      -->      
+      <!-- Create an empty list to hold which wares were added. At the end if there is anything in the list it can be added to the logbook. -->
+      <set_value name="$addedWares" exact="[]"/>
+      
+      <do_for_each name="$exportedWareOffer" in="$sourceStationSellOffers">
+        
+        <do_if value="not $targetStation.cargo.{$exportedWareOffer.ware}.exists">                                        
+          <add_tradeware object="$targetStation" ware="$exportedWareOffer.ware" allowbuy="true" allowsell="true" />
+          <append_to_list name="$addedWares" exact="$exportedWareOffer.ware"/>
+        </do_if>
+      
+      </do_for_each>           
+      
+      <!-- If we get here, it's considered a success with no logic errors. -->
+      <set_value name="$successResult" exact="true"/>
+
+      <return>
+        <retval name="wasErrorFree" value="$successResult"/>
+        <retval name="errorMessage" value="null"/>
+        <retval name="waresAdded" value="$addedWares"/>
+      </return>
+    </actions>
+  </attention>
+</aiscript>

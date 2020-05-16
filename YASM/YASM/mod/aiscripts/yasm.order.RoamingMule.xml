@@ -2,7 +2,7 @@
 <aiscript name="yasm.order.RoamingMule" version="1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="aiscripts.xsd">
   <order id="YetAnotherRoamingMule" name="{966602,400}" description="{966602,401}" category="trade">
     <params>
-      <param name="IsInfinite" infinitevalue="true" type="bool" text="This shouldn't be seen." comment="Whether the order is infinite or not" />
+      <param name="isInfinite" infinitevalue="true" type="bool" text="This shouldn't be seen." comment="Whether the order is infinite or not" />
     </params>
     <!-- TODO: Flesh this out. -->
   </order>

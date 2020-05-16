@@ -8,23 +8,24 @@
       </param>
       <param name="tradePartnerStation" required="false" type="object" default="null" text="{966602,203}" comment="The designated primary trade partner station to trade with on behalf of the home station.">
         <input_param name="class" value="[class.station]"/>
-         <!--Doesn't seem to do anything in the UI. Can still select other stations. Need to file a bug report.-->
+        <!--Doesn't seem to do anything in the UI. Can still select other stations. Need to file a bug report.-->
         <input_param name="owner" value="this.object.owner"/>
       </param>
       <param name="makeSubordinateToHomeStation" required="false" type="bool" default="true" text="{966602,204}" comment="Whether this ship should become a subordinate ship of the home station or not." />
-      <param name="addWaresToTradePartner" required="false" type="bool" default="true" text="{966602,205}" comment="Whether to add product wares the home station is selling to the trade partner or not" />
+      <param name="addExportsToTradePartner" required="false" type="bool" default="false" text="{966602,205}" comment="Whether to add product wares the home station is selling to the trade partner or not" />
       <param name="transportIllegalWares" required="false" type="bool" default="false" text="{966602,206}" comment="Whether the ship is allowed to haul illegal goods or not." />
       <param name="exportToOtherStationsFirst" required="false" type="bool" default="true" text="{966602,207}" comment="Try to deliver exports to other stations in range that need them before hauling to trade partner." />
-      <param name="serviceOtherStationsWhenIdle" required="false" type="bool" default="false" text="{966602,208}" comment="Whether this ship should attempt to service other stations (roam) when it has nothing else to do." />
-      <param name="maxJumpRange" required="false" type="number" default="0"  text="{966602,209}" comment="The absolute maximum jumping range to be considered for roaming transports">
-         <!--We don't want mules covering large areas of space. So the maximum a station mule will ever travel will be 5 jumps. Use a roaming mule for farther distance.-->
+      <param name="prioritizeBuidlStorage" required="false" type="bool" default="false" text="{966602,208}" comment="When searching for imports to bring to the station, should build storage be prioritized?" />
+      <param name="serviceOtherStationsWhenIdle" required="false" type="bool" default="false" text="{966602,209}" comment="Whether this ship should attempt to service other stations (roam) when it has nothing else to do." />
+      <param name="maxJumpRange" required="false" type="number" default="0"  text="{966602,210}" comment="The absolute maximum jumping range to be considered for roaming transports">
+        <!--We don't want mules covering large areas of space. So the maximum a station mule will ever travel will be 5 jumps. Use a roaming mule for farther distance.-->
         <input_param name="startvalue" value="0"/>
         <input_param name="min" value="0"/>
         <input_param name="max" value="5"/>
         <input_param name="step" value ="1"/>
       </param>
-      <!-- This is currently bugged. A wares list after a required parameter breaks the UI for default orders (throws an onClick error). -->
-      <!--<param name="WareWhitelist" required="false" default="null" type="list" text="{966602,210}" comment="Allows the player to limit what wares the station mule will haul. When set only these wares will be looked at, even if they aren't offered at the home or trade partner.">
+      <!-- This is currently bugged. A wares list after a required parameter breaks the UI for default orders. Wares lists (probably lists in general) break when there's another param that's required. -->
+      <!--<param name="WareWhitelist" required="false" default="[]" type="list" text="{966602,211}" comment="Allows the player to limit what wares the station mule will haul. When set only these wares will be looked at, even if they aren't offered at the home or trade partner.">
         <input_param name="type" value="'ware'" />
         <input_param name="cancarry" value="this.ship" />
       </param>-->
@@ -50,83 +51,216 @@
     <handler ref="TargetInvalidHandler" />
   </interrupts>
   <init>
-    <debug_text text="'YASM Station Mule Init'" filter="general" chance="100"/>
-    
+    <!-- Debug stuff first. -->
     <set_value name="$debugChance" exact="100"/>
-    <set_value name="$debugFileName" exact="'yasm_stationmule_%1_%2.log'.[this.ship.name, this.ship.idcode]"/>
+    <set_value name="$debugFileName" exact="'yasm_stationmule_%1.log'.[this.ship.idcode]"/>
     <set_value name="$debugFileDirectory" exact="'yasm'"/>
-    
-    <debug_text text="'YASM Station mule log file' + $debugFileName" chance="100"/>
-    <debug_text text="'YASM Station mule log directory' + $debugFileDirectory" chance="100"/>
-    
-    <set_command_action commandaction="commandaction.standingby" />
 
+    <debug_to_file
+      name="$debugFileName"
+      directory="$debugFileDirectory"
+      text="'[YASM General] Station Mule init started for ship name: %1 id code: %2'.[this.ship.name, this.ship.idcode]"
+      append="true"
+      chance="$debugChance"
+    />
+
+    <!-- Ship Cargo Capacity Thresholds -->
+    <set_value name="$cargoCapacityThreshold" exact="0.5" />
+    <set_value name="$cargoCapacityCriticalThreshold" exact="0.1" />
+
+    <!-- Should I base these on actual cargo capacity ranges instead of ship size? -->
+    <do_if value="this.ship.isclass.ship_s == true">
+      <set_value name="$cargoCapacityThreshold" exact="0.6" />
+      <set_value name="$cargoCapacityCriticalThreshold" exact="0.1" />
+    </do_if>
+    <do_elseif value="this.ship.isclass.ship_m == true">
+      <set_value name="$cargoCapacityThreshold" exact="0.5" />
+      <set_value name="$cargoCapacityCriticalThreshold" exact="0.1" />
+    </do_elseif>
+    <do_elseif value="this.ship.isclass.ship_l == true">
+      <set_value name="$cargoCapacityThreshold" exact="0.4" />
+      <set_value name="$cargoCapacityCriticalThreshold" exact="0.05" />
+    </do_elseif>
+    <do_elseif value="this.ship.isclass.ship_xl == true">
+      <set_value name="$cargoCapacityThreshold" exact="0.35" />
+      <set_value name="$cargoCapacityCriticalThreshold" exact="0.03" />
+    </do_elseif>   
+    
+    <set_command_action commandaction="commandaction.standingby" />    
     <include_interrupt_actions ref="GetBlacklistgroup"/>
   </init>
   <attention min="unknown">
     <actions>
-      <!-- Parameter Validation. -->
-      
+      <!-- Parameter Validation?. This should probably eventually be done. Other scripts could call this as an order even though I don't intend it. -->      
+      <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Starting actions...'" append="true" chance="$debugChance" />
+      <!-- List off parameters in debug_to_file -->
+      <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Home Station: %1-%2'.[$homeStation.name, $homeStation.idcode]" append="true" chance="$debugChance" />
+
+      <do_if value="$tradePartnerStation != null">
+        <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Trade Partner Station: %1-%2'.[$tradePartnerStation.name, $tradePartnerStation.idcode]" append="true" chance="$debugChance" />
+      </do_if>
+
+      <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Make Subordinate? %1'.[$makeSubordinateToHomeStation]" append="true" chance="$debugChance" />
+      <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Add exports to trade partner? %1'.[$addExportsToTradePartner]" append="true" chance="$debugChance" />
+      <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Transport Illegal Wares? %1'.[$transportIllegalWares]" append="true" chance="$debugChance" />
+      <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Prioritize exporting to other nearby stations before trade partner? %1'.[$exportToOtherStationsFirst]" append="true" chance="$debugChance" />
+      <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Prioritize Build Storage? %1'.[$prioritizeBuidlStorage]" append="true" chance="$debugChance" />      
+      <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Service other stations when idle? %1'.[$serviceOtherStationsWhenIdle]" append="true" chance="$debugChance" />
+      <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Max Jump Range: %1'.[$maxJumpRange]" append="true" chance="$debugChance" />
+
       <!-- First check if this ship should be a subordinate of the home station, and if so add it as such if it's not already a subordinate. -->
-      <debug_text text="'YASM - About to check to make subordinate.'" filter="general" chance="100"/>
-      <do_if value="$makeSubordinateToHomeStation">
+      <!-- TODO: Check if the this UI allows assigning to a build storage (station that is planned but not yet built). -->
+      <do_if value="($makeSubordinateToHomeStation and $homeStation.isoperational) and this.assignedcontrolled.commander != $homeStation">
+
+        <debug_to_file 
+          name="$debugFileName" 
+          directory="$debugFileDirectory" 
+          text="'[YASM General] Assigning this ship as a subordinate to the home station: %1 idcode: %2.'.[$homeStation.name, $homeStation.idcode]" 
+          append="true" 
+          chance="$debugChance" 
+        />
+
         <set_value name="$madeSubordinateErrorFree" exact="false"/>
         <set_value name="$makeSubordinateErrorMessage" exact="''"/>
         <set_value name="$wasSubordinateAssigned" exact="false"/>
 
-        <debug_text text="'YASM - Calling to make subordinate.'" filter="general" chance="100"/>
-        <run_script name="yasm.lib.MakeSubordinate">
-          <param name="commander" value="$HomeStation"/>
+        <run_script name="'yasm.lib.MakeSubordinate'">
+          <param name="commander" value="$homeStation"/>
           <param name="subordinate" value="this.ship"/>
           <!-- Need to see if my diff into assignments.xml actually worked. -->
           <param name="assignment" value="assignment.yasmStationMule"/>
+          <param name="subordinateGroupId" value="null"/>
           <save_retval name="wasErrorFree" variable="$madeSubordinateErrorFree"/>
           <save_retval name="errorMessage" variable="$makeSubordinateErrorMessage"/>
           <save_retval name="subordinateAssigned" variable="$wasSubordinateAssigned"/>
         </run_script>
 
-        <do_if value="$madeSubordinateErrorFree == false">
-          <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM ERROR!] Error hit when trying to make this ship (name: %1 - id: %2) a subordinate of station (name: %3 - id: %4). Error Message: %5'.[this.ship.name, this.ship.idcode, $homeStation.name, $homeStation.idcode, $makeSubordinateErrorMessage]" chance="$debugChance" />
-        </do_if>
-      </do_if>
-      
-      <!-- 
-            Need to determine if this is currently serving a station that's being built, which is a special case. We'll want the station mule to one way trade for the build storage in this case.
-            I should probably make "build storage mule" it's own order (that supports a single target station, as well as roaming) and just call that.
-      -->
-      
-      <!-- Next check if any wares need to be added from the home station to the trade partner if the related parameter is true. -->
+        <debug_text text="'[YASM] was sub assigned: ' + $wasSubordinateAssigned" filter="general" chance="100"/>
 
-      <!-- 
+        <do_if value="$madeSubordinateErrorFree == false">
+          <debug_to_file 
+            name="$debugFileName" 
+            directory="$debugFileDirectory" 
+            text="'[YASM ERROR!] Error hit when trying to make this ship (name: %1 - id: %2) a subordinate of station (name: %3 - id: %4). Error Message: %5'.[this.ship.name, this.ship.idcode, $homeStation.name, $homeStation.idcode, $makeSubordinateErrorMessage]" 
+            chance="$debugChance" 
+          />
+        </do_if>
+        <do_elseif value="$wasSubordinateAssigned">
+          <debug_to_file 
+            name="$debugFileName" 
+            directory="$debugFileDirectory" 
+            text="'[YASM GENERAL] Ship was assigned to commander name: %1 idcode: %2 with the assignment of %3'.[this.assignedcontrolled.commander.name, this.assignedcontrolled.commander.idcode, this.assignedcontrolled.assignment]" 
+            chance="$debugChance" 
+          />
+        </do_elseif>
+        <do_else>
+          <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM GENERAL] No assignment made.'" chance="$debugChance" />
+        </do_else>
+
+      </do_if>
+
+      <do_if value="$homeStation.isoperational">
+        <!-- Next check if any wares need to be added from the home station to the trade partner if the related parameter is true. -->
+
+        <!-- Defining a spot for getting home station exports now. If adding wares it'll be needed right away, otherwise it may not be needed till later. -->
+        <set_value name="$homeStationExports" exact="null" />
+
+        <do_if value="$addExportsToTradePartner and ($tradePartnerStation != null and $tradePartnerStation.trueowner == this.trueowner)">
+          <debug_to_file 
+            name="$debugFileName" 
+            directory="$debugFileDirectory" 
+            text="'[YASM General] Attempting to add exports from the home station ( %1-%2 ) to the trade partner ( %3-%4. )'.[$homeStation.name, $homeStation.idcode, $tradePartnerStation.name, $tradePartnerStation.idcode]" 
+            append="true" 
+            chance="$debugChance" 
+          />
+
+          <!-- Get exports from the home station and call to have them added to trade partner. No need for blacklist checking, as the user specified this station. -->
+          <find_sell_offer seller="$homeStation" tradepartner="this.ship" multiple="true" result="$homeStationExports" />
+
+          <!-- No need to even try if there's no sell offers. -->
+          <do_if value="$homeStationExports.count gt 0">
+            <set_value name="$addWaresSuccessResult" exact="false"/>
+            <set_value name="$addWaresErrorMesage" exact="null"/>
+            <set_value name="$addedWares" exact="null"/>
+            
+            <run_script name="'yasm.lib.AddStationTradewares'">
+              <param name="targetStation" value="$tradePartnerStation"/>
+              <param name="sourceStationSellOffers" value="$homeStationExports"/>
+              <save_retval name="wasErrorFree" variable="$addWaresSuccessResult"/>
+              <save_retval name="errorMessage" variable="$addWaresErrorMesage"/>
+              <save_retval name="waresAdded" variable="$addedWares"/>
+            </run_script>
+
+            <do_if value="$addWaresSuccessResult == false">
+              <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM ERROR] Error encountered when attempting to add wares to trade partner. %1'.[$addWaresErrorMesage]" chance="$debugChance" />
+            </do_if>
+            <do_elseif value="$addedWares.count gt 0">
+              <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Wares added to trade partner. %1'.[$addedWares]" chance="$debugChance" />
+
+              <!-- No clue if this'll work like I want it to. -->
+              <set_value name="$logTitle" exact="{966602,240}.[$tradePartnerStation.name, $tradePartnerStation.idcode]"/>
+              <set_value name="$logText" exact="''" />
+
+              <do_for_each name="$logWare" in="$addedWares">
+                <set_value name="$logText" exact="$logText + '*%1* '.[$logWare.name]" />
+              </do_for_each>
+              
+              <write_to_logbook title="$logTitle" text="$logText" category="general" interaction="showonmap" object="$tradePartnerStation" />
+            </do_elseif>
+            <do_else>
+              <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Home Station has exports, but none needed to be added to trade partner.'" chance="$debugChance" />
+            </do_else>
+          </do_if>
+          <do_else>
+            <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] No exports to add to trade partner. Skipping...'" chance="$debugChance" />
+          </do_else>
+        </do_if>
+
+        <wait exact="10s" />
+        
+        <!-- First, dump wares if it's got stuff in its cargo. -->
+        <!-- TODO: Make a generic "Dump Wares" script. -->
+        
+
+        <!-- 
             Determine Home Station's resource (consumed wares that this station is not also selling, since selling indicates an excess) priorities. 
             Note that because we ignore wares that have both buy and sell offers here, this makes us able to support warehouse to warehouse trades as
             it will only be a one way trade. Meaning if this mule is assigned to a warehouse, it will only ever export wares, never import which is desired
             as importing and exporting the same good between two stations could cause an infinite loop for a given ware.
       -->
-      
-      <!-- Determine Home Station's export (products and excess resources) priorities -->
-      
-      <!-- 
+
+        <!-- Determine Home Station's export (products and excess resources) priorities -->
+
+        <!-- 
             If set, check trade partner first to see if it has any of the resource priorities, and create a list of possible matches, 
             if trade partner isn't set or has no matches, check stations in range. Remember for buy orders to filter out amounts that don't 
             fill a significant amount of the hull.           
       -->
 
-      <!-- If ExportToOtherStationsFirst check stations other than the trade partner stations in range and make a list of matches (sort by distance to home if possible), if there's nothing or this option is not set, check the trade partner station -->
-      
-      <!-- Check to see if we have matches. If we do check export vs import priorities (which one to do first). -->
-      
-      <!-- Syncpoint here, since this is a good place to end if the script needs to be canceled. Vanilla trader also does it between finding orders and actually creating them. -->      
-      <!-- TODO: Figure out why vanilla (order.trade.routine) checks if order.id is itself. That bit doesn't make sense to me. -->
-      <set_order_syncpoint_reached order="this.assignedcontrolled.order" />
-      
-      <!-- Verify amounts in a non-blocking way, and if we fall below any thresholds just move on to the next in the list. Remember to clamp.-->
-      
-      <!-- If we have some still valid trades, create them and end (end should happen auto-magically, especially if we add a short wait after the create)-->
+        <!-- If ExportToOtherStationsFirst check stations other than the trade partner stations in range and make a list of matches (sort by distance to home if possible), if there's nothing or this option is not set, check the trade partner station -->
 
-      <!-- 
+        <!-- Check to see if we have matches. If we do check export vs import priorities (which one to do first). -->
+
+        <!-- Syncpoint here, since this is a good place to end if the script needs to be canceled. Vanilla trader also does it between finding orders and actually creating them. -->
+        <!-- TODO: Figure out why vanilla (order.trade.routine) checks if order.id is itself. That bit doesn't make sense to me. -->
+        <set_order_syncpoint_reached order="this.assignedcontrolled.order" />
+
+        <!-- Verify amounts in a non-blocking way, and if we fall below any thresholds just move on to the next in the list. Remember to clamp.-->
+
+        <!-- If we have some still valid trades, create them and end (end should happen auto-magically, especially if we add a short wait after the create)-->
+
+        <!-- 
             If there were no valid trades found, and ServiceOtherStationsWhenIdle is true, run_script yasm.order.RoamingMule as a non-infinite (1 time) order. 
       -->
+      </do_if>
+      <do_else>
+        <!-- The station isn't operational. Which usually indicates it's been destroyed. Should probably see if its currently a subordinate and unsub it and change the order to hold and wait or something. -->
+
+
+      </do_else>
+
+
+      <!-- TODO: If no orders were created this run, create a wait order for 30s to 1m. Could probably make this length a parameter. -->
 
       <!-- Ensuring ending on a wait seems to be a thing that needs to be done for reasons. Don't quote me on that, I'm tired. -->
       <wait exact="1ms" />
