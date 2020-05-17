@@ -3,8 +3,8 @@
   <params>
     <param name="ware" default="null" comment="The ware to find buy offers for. " />
     <param name="wareAmount" default="1" comment="The amount of the ware that offers need to have to be valid."/>
-    <param name="minPrice" default ="0" comment="The minimum price to search for."/>
-    <param name="maxPrice" default="999999" comment="The maximum price to search for."/>
+    <param name="minPrice" default ="0Cr" comment="The minimum price to search for."/>
+    <param name="maxPrice" default="99999Cr" comment="The maximum price to search for."/>
     <param name="findBuyOffers" default="true" comment="Find buy offers if true, sell offers if false."/>
     <param name="tradePartner" default="null" comment="The trade partner for finding offers. Should be a container."/>
     <param name="rangeRefObject" default="null" comment="The object whose current location to use when calculating station area."/>
@@ -43,7 +43,7 @@
         </return>
       </do_if>
 
-      <do_if value="(typeof $minPrice).isnumeric == false  or $minPrice lt 0">
+      <do_if value="typeof $minPrice != datatype.money  or $minPrice lt 0">
         <set_value name="$errorMessage" exact="'[yasm.lib.FindOffersForWare] minPrice was non-numeric or out of range (less than 0)!'"/>
 
         <return>
@@ -53,7 +53,7 @@
       </do_if>
 
       <!-- Verify min/max price relative to each other -->
-      <do_if value="(typeof $maxPrice).isnumeric == false  or $maxPrice lt 0">
+      <do_if value="typeof $maxPrice != datatype.money  or $maxPrice lt 0">
         <set_value name="$errorMessage" exact="'[yasm.lib.FindOffersForWare] maxPrice was non-numeric or out of range (less than 0)!'"/>
 
         <return>
@@ -73,7 +73,7 @@
 
       <!-- Not validating bools ($findBuyOffers), since nulls are presumed falsey and if there's a value it's true. -->
 
-      <do_if value="$tradePartner == null or tradePartner.isclass.container == false">
+      <do_if value="$tradePartner == null or $tradePartner.isclass.container == false">
         <set_value name="$errorMessage" exact="'[yasm.lib.FindOffersForWare] tradePartner was null or not a container!'"/>
 
         <return>
@@ -92,7 +92,7 @@
       </do_if>
 
       <do_if value="(typeof $minGateDistance).isnumeric == false or $minGateDistance lt 0">
-        <set_value name="$errorMessage" exact="'[yasm.lib.FindOffersForWare] minGateDistance was non-numeric or out of range (less than 1)!'"/>
+        <set_value name="$errorMessage" exact="'[yasm.lib.FindOffersForWare] minGateDistance was non-numeric or out of range (less than 0)!'"/>
 
         <return>
           <retval name="wasErrorFree" value="$successResult"/>
@@ -119,7 +119,7 @@
         </return>
       </do_if>
 
-      <do_if value="$blackListGroup == null or typeof $blackListGroup != datatype.group">
+      <do_if value="$blacklistGroup == null or typeof $blacklistGroup != datatype.blacklistgroup">
         <set_value name="$errorMessage" exact="'[yasm.lib.FindOffersForWare] blacklistGroup was null or not a group!'"/>
 
         <return>
@@ -170,20 +170,21 @@
           <do_if value="$findBuyOffers">
             <find_buy_offer tradepartner="$tradePartner" buyer="$container" wares="$ware" result="$offerResult">
               <price min="$minPrice" max="$maxPrice"/>
-              <offeramount min="$wareAmount"/>
+              <amount min="$wareAmount"/>
               <match_buyer tradesknownto="this.owner" />
             </find_buy_offer>
           </do_if>
           <do_else>
             <find_sell_offer tradepartner="$tradePartner" seller="$container" wares="$ware" result="$offerResult">
               <price min="$minPrice" max="$maxPrice"/>
-              <offeramount min="$wareAmount"/>
+              <amount min="$wareAmount"/>
               <match_seller tradesknownto="this.owner" />
             </find_sell_offer>
           </do_else>
 
           <!-- Offer checkin' -->
           <do_if value="$offerResult != null">
+
             <append_to_list name="$results" exact="$offerResult"/>
             <set_value name="$offerResult" exact="null"/>
 
@@ -202,56 +203,65 @@
         <!-- First get sell spaces. Create a var to hold the results.-->
         <set_value name="$offerSpaces" exact="[]"/>
 
+        <!-- This should return sectors sorted by distance (closest first) -->
         <run_script name="'lib.find.sectors.inrange'" result="$offerSpaces">
           <param name="refobject" value="$rangeRefObject"/>
           <param name="mingatedistance" value="$minGateDistance"/>
           <param name="maxgatedistance" value="$maxGateDistance"/>
+          <param name="applyblacklist" value="true"/>
           <param name="blacklistgroup" value="$blacklistGroup"/>
           <param name="debugchance" value="0"/>
         </run_script>
 
         <do_if value="$offerSpaces.count lt 1">
-          <!-- If we should search areas, yet there were no areas to search found it means an error. -->          
+          <!-- If we should search areas, yet there were no areas to search found it means an error. -->
           <set_value name="$errorMessage" exact="'[yasm.lib.FindOffersForWare] There were no sectors found to search given the passed in parameters! No valid areas to search for offers!'"/>
 
           <!-- Instead of erroring out completely, go to normal return as there may be good offers from containers.-->
           <resume label="finish"/>
         </do_if>
-        
+
         <!-- Ok, we've got at least one good sector to search. Let's kick this shindig off. -->
-        <set_value name="$foundOffers" exact="[]"/>
+        <do_for_each name="$offerSpace" in="$offerSpaces">
 
-        <do_if value="$findBuyOffers">
-          <find_buy_offer tradepartner="$tradePartner" wares="$ware" space="$offerSpaces" result="$foundOffers" multiple="true">
-            <price min="$minPrice" max="$maxPrice"/>
-            <offeramount min="$wareAmount"/>
-            <match_buyer owner="$allowedFactions" tradesknownto="this.owner">
-              <match_use_blacklist group="$blacklistGroup" type="blacklisttype.objectactivity" object="$tradePartner"/>
-            </match_buyer>
-          </find_buy_offer>
-        </do_if>
-        <do_else>
-          <find_sell_offer tradepartner="$tradePartner" wares="$ware" space="$offerSpaces" result="$foundOffers" multiple="true">
-            <price min="$minPrice" max="$maxPrice"/>
-            <offeramount min="$wareAmount"/>
-            <match_buyer owner="$allowedFactions" tradesknownto="this.owner">
-              <match_use_blacklist group="$blacklistGroup" type="blacklisttype.objectactivity" object="$tradePartner"/>
-            </match_buyer>
-          </find_sell_offer>
-        </do_else>
-      </do_if>
+          <set_value name="$foundOffers" exact="[]"/>
 
-      <!-- Add found offers to the results list. These should roughly be sorted by sector distance already. -->
-      <do_if value="$foundOffers.count gt 0">
-        
-        <do_for_each name="$offer" in="$foundOffers">
-          <append_to_list name="$results" exact="$offer"/>
-
-          <do_if value="$results.count ge $maxAmountOfOffers">
-            <break />
+          <do_if value="$findBuyOffers">
+            <find_buy_offer tradepartner="$tradePartner" wares="$ware" space="$offerSpace" result="$foundOffers" multiple="true">
+              <price min="$minPrice" max="$maxPrice"/>
+              <amount min="$wareAmount"/>
+              <match_buyer owner="$allowedFactions" tradesknownto="this.owner" >
+                <match_use_blacklist group="$blacklistGroup" type="blacklisttype.objectactivity" object="$tradePartner"/>
+              </match_buyer>
+            </find_buy_offer>
           </do_if>
+          <do_else>
+            <find_sell_offer tradepartner="$tradePartner" wares="$ware" space="$offerSpace" result="$foundOffers" multiple="true">
+              <price min="$minPrice" max="$maxPrice"/>
+              <amount min="$wareAmount"/>
+              <match_seller owner="$allowedFactions" tradesknownto="this.owner">
+                <match_use_blacklist group="$blacklistGroup" type="blacklisttype.objectactivity" object="$tradePartner"/>
+              </match_seller>
+            </find_sell_offer>
+          </do_else>
+
+          <!-- Add found offers to the results list.  -->
+          <do_if value="$foundOffers.count gt 0">
+
+            <do_for_each name="$offer" in="$foundOffers">
+              <append_to_list name="$results" exact="$offer"/>
+
+              <do_if value="$results.count ge $maxAmountOfOffers">
+                <!-- If we've hit our limit, we can just peace out. -->
+                <resume label="finish"/>
+              </do_if>
+            </do_for_each>
+          </do_if>
+
         </do_for_each>
       </do_if>
+
+
 
       <!-- Label to go to in order to leave the method early. -->
       <label name="finish"/>

@@ -21,6 +21,8 @@
     <!-- Other stuff. -->
     <t id="230">Ship is not a valid type for this order.</t>
     <t id="240">Wares added as trade wares to %1-%2</t>
+    <t id="241">\033#DC143C# Station Mule could not offload existing cargo!\033x</t>
+    <t id="242">Mule %1-%2 has existing cargo, but nowhere within its range to offload it.</t>
     <!-- 400 - 599 reserved for roaming mule stuff-->
     <t id="400">YASM! Roaming Mule</t>
     <t id="401">Roams around from its home station within the set range looking for player to player hauls to fill.</t>

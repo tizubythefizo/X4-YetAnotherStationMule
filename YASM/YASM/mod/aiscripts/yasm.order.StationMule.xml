@@ -63,6 +63,23 @@
       append="true"
       chance="$debugChance"
     />
+    
+    <!-- Jump Range -->
+    <!-- Doing the jump range using do_ifs instead of a fancy one liner with several nested .max's for readability. -->
+    <set_value name="$jumpRange" exact="([1, this.ship.pilot.skill.piloting].max / 3)i"/>
+
+    <do_if value="this.ship.commander.exists and this.ship.commander.tradenpc.exists">
+      <do_if value="this.ship.commander.tradenpc.skill.management gt this.ship.pilot.skill.piloting">
+        <set_value name="$jumpRange" exact="([this.ship.commander.tradenpc.skill.management] / 3)i"/>
+      </do_if>
+    </do_if>
+
+    <!-- Clamp max jump range. -->
+    <do_if value="$jumpRange gt $maxJumpRange">
+      <set_value name="$jumpRange" exact="$maxJumpRange"/>
+    </do_if>
+
+    <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] jumpRange calcuated to %1'.[$jumpRange]" chance="$debugChance" />
 
     <!-- Ship Cargo Capacity Thresholds -->
     <set_value name="$cargoCapacityThreshold" exact="0.5" />
@@ -93,6 +110,9 @@
     <actions>
       <!-- Parameter Validation?. This should probably eventually be done. Other scripts could call this as an order even though I don't intend it. -->      
       <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Starting actions...'" append="true" chance="$debugChance" />
+      
+      <!-- Parameter Validation -->
+      
       <!-- List off parameters in debug_to_file -->
       <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Home Station: %1-%2'.[$homeStation.name, $homeStation.idcode]" append="true" chance="$debugChance" />
 
@@ -135,8 +155,6 @@
           <save_retval name="subordinateAssigned" variable="$wasSubordinateAssigned"/>
         </run_script>
 
-        <debug_text text="'[YASM] was sub assigned: ' + $wasSubordinateAssigned" filter="general" chance="100"/>
-
         <do_if value="$madeSubordinateErrorFree == false">
           <debug_to_file 
             name="$debugFileName" 
@@ -152,6 +170,18 @@
             text="'[YASM GENERAL] Ship was assigned to commander name: %1 idcode: %2 with the assignment of %3'.[this.assignedcontrolled.commander.name, this.assignedcontrolled.commander.idcode, this.assignedcontrolled.assignment]" 
             chance="$debugChance" 
           />
+
+          <!-- New commander assigned, recalc jump rang. -->
+          <do_if value="this.ship.commander.tradenpc.exists and this.ship.commander.tradenpc.skill.management gt this.ship.pilot.skill.piloting">
+            <set_value name="$jumpRange" exact="([this.ship.commander.tradenpc.skill.management].max / 3)i"/>
+
+            <!-- Clamp max jump range. -->
+            <do_if value="$jumpRange gt $maxJumpRange">
+              <set_value name="$jumpRange" exact="$maxJumpRange"/>
+            </do_if>
+            
+            <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] jumpRange recalcuated to %1'.[$jumpRange]" chance="$debugChance" />
+          </do_if>
         </do_elseif>
         <do_else>
           <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM GENERAL] No assignment made.'" chance="$debugChance" />
@@ -216,18 +246,85 @@
           </do_else>
         </do_if>
 
-        <wait exact="10s" />
+        <do_if value="this.assignedcontrolled.order.id == 'YetAnotherStationMule'">
+          <set_order_syncpoint_reached order="this.assignedcontrolled.order" />
+        </do_if>
+        
         
         <!-- First, dump wares if it's got stuff in its cargo. -->
         <!-- TODO: Make a generic "Dump Wares" script. -->
-        
+        <do_if value="this.ship.cargo.list.count gt 0">
+          <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Existing wares found in cargo. Trying to dump them. Wares: %1'.[this.ship.cargo.list]" chance="$debugChance" />
+          
+          <!-- For each ware, try to sell it off, checking home station and trade partner first. -->
+          <set_value name="$priorityContainers" exact="[]"/>
+
+          <append_to_list name="$priorityContainers" exact="$homeStation"/>
+
+          <do_if value="$homeStation.buildstorage.isoperational">
+            <append_to_list name="$priorityContainers" exact="$homeStation.buildstorage"/>
+          </do_if>
+
+          <do_if value="$tradePartnerStation != null and $tradePartnerStation.isoperational">
+            <append_to_list name="$priorityContainers" exact="$tradePartnerStation"/>
+
+            <do_if value="$tradePartnerStation.buildstorage.isoperational">
+              <append_to_list name="$priorityContainers" exact="$tradePartnerStation.buildstorage"/>
+            </do_if>
+          </do_if>
+
+          <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Priority stations for dumping wares: %1'.[$priorityContainers]" chance="$debugChance" />
+          
+          <!-- For this, sell to anyone who we're not at war with. -->
+          <get_factions_by_relation object="this.ship" relation="dock"  result="$tradeFactions"/>
+
+          <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Factions that are valid for dumping wares: %1'.[$tradeFactions]" chance="$debugChance" />
+
+          <set_value name="$dumpWaresErrorFree" exact="false"/>
+          <set_value name="$dumpWaresErrorMessage" exact="null"/>
+          <set_value name="$dumpWaresCreatedOrders" exact="false"/>
+          
+          <!-- Call to dump cargo, and finish up this iteration if offers.-->
+          <run_script name="'yasm.lib.DumpWares'">
+            <param name="ship" value="this.ship"/>
+            <param name="jumpRange" value="$jumpRange"/>
+            <param name="blacklistGroup" value="$blacklistgroup"/>
+            <param name="allowedFactions" value="$tradeFactions"/>
+            <param name="priorityContainers" value="$priorityContainers"/>
+            <save_retval name="wasErrorFree" variable="$dumpWaresErrorFree"/>
+            <save_retval name="errorMssage" variable="$dumpWaresErrorMessage"/>
+            <save_retval name="ordersCreated" variable="$dumpWaresCreatedOrders"/>
+          </run_script>
+        </do_if>
+
+        <do_if value="$dumpWaresErrorFree == false">
+          <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM ERROR] Error encountered when attempting to dump wares. Some orders may have been created. Error message: %1'.[$dumpWaresErrorMessage]" chance="$debugChance" />
+          <wait exact="30s"/>
+          <resume label="finish"/>
+        </do_if>
+
+        <do_if value="$dumpWaresCreatedOrders">
+          <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Attempted to dump wares. Orders were created. Mule will now conduct trades.'" chance="$debugChance" />
+        </do_if>
+        <do_else>
+          <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Attempted to dump wares, but there were no valid offers in the allowed range.'" chance="$debugChance" />
+          <!-- Logbook and wait a few minutes. -->
+          <set_value name="$logTitle" exact="{966602,241}"/>
+          <set_value name="$logText" exact="{966602,242}.[this.ship.name, this.ship.idcode]"/>
+          
+          <write_to_logbook title="$logTitle" text="$logText" category="upkeep" interaction="showonmap" object="this.ship" />
+        </do_else>
+
+        <!-- TODO: Nix this wait. -->
+        <wait exact="10s" />
+        <resume label="finish"/>
 
         <!-- 
             Determine Home Station's resource (consumed wares that this station is not also selling, since selling indicates an excess) priorities. 
             Note that because we ignore wares that have both buy and sell offers here, this makes us able to support warehouse to warehouse trades as
             it will only be a one way trade. Meaning if this mule is assigned to a warehouse, it will only ever export wares, never import which is desired
             as importing and exporting the same good between two stations could cause an infinite loop for a given ware.
-      -->
+        -->
 
         <!-- Determine Home Station's export (products and excess resources) priorities -->
 
@@ -235,15 +332,11 @@
             If set, check trade partner first to see if it has any of the resource priorities, and create a list of possible matches, 
             if trade partner isn't set or has no matches, check stations in range. Remember for buy orders to filter out amounts that don't 
             fill a significant amount of the hull.           
-      -->
+        -->
 
         <!-- If ExportToOtherStationsFirst check stations other than the trade partner stations in range and make a list of matches (sort by distance to home if possible), if there's nothing or this option is not set, check the trade partner station -->
 
-        <!-- Check to see if we have matches. If we do check export vs import priorities (which one to do first). -->
-
-        <!-- Syncpoint here, since this is a good place to end if the script needs to be canceled. Vanilla trader also does it between finding orders and actually creating them. -->
-        <!-- TODO: Figure out why vanilla (order.trade.routine) checks if order.id is itself. That bit doesn't make sense to me. -->
-        <set_order_syncpoint_reached order="this.assignedcontrolled.order" />
+        <!-- Check to see if we have matches. If we do check export vs import priorities (which one to do first). -->        
 
         <!-- Verify amounts in a non-blocking way, and if we fall below any thresholds just move on to the next in the list. Remember to clamp.-->
 
@@ -251,7 +344,7 @@
 
         <!-- 
             If there were no valid trades found, and ServiceOtherStationsWhenIdle is true, run_script yasm.order.RoamingMule as a non-infinite (1 time) order. 
-      -->
+        -->
       </do_if>
       <do_else>
         <!-- The station isn't operational. Which usually indicates it's been destroyed. Should probably see if its currently a subordinate and unsub it and change the order to hold and wait or something. -->

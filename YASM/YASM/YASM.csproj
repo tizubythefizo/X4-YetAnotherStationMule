@@ -50,6 +50,7 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="mod\aiscripts\yasm.lib.AddStationTradewares.xml" />
+    <Content Include="mod\aiscripts\yasm.lib.DumpWares.xml" />
     <Content Include="mod\aiscripts\yasm.lib.FindOffersForWare.xml" />
     <Content Include="mod\aiscripts\yasm.lib.MakeSubordinate.xml" />
     <Content Include="mod\aiscripts\yasm.order.RoamingMule.xml" />

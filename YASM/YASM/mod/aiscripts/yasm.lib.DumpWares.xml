@@ -1,0 +1,173 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<!-- This script will attempt to dump wares at the closest station(s) for each ware in the ships cargo hold. -->
+<aiscript name="yasm.lib.DumpWares" version="1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="aiscripts.xsd">
+  <params>
+    <param name="ship" default="null" comment="The ship to dump wares from. Only ships can be used, since nothing else moves around."/>    
+    <param name="jumpRange" default="0" comment="The jump range in which to search for offers."/>
+    <param name="blacklistGroup" default="null" comment="Blacklist group for the ship."/>
+    <param name="allowedFactions" default="null" comment="The factions the ship is allowed to trade with."/>
+    <param name="priorityContainers" default="[]" comment="Optional: List of containers to prioritize dumping wares to."/>
+  </params>
+  <init>
+    <set_value name="$successResult" exact="false"/>
+    <set_value name="$errorMessage" exact="'No Errors.'"/>
+    <set_value name="$ordersCreated" exact="false"/>
+  </init>
+  <attention min="unknown">
+    <actions>
+      <!-- Parameter Validation -->
+
+      <do_if value="$ship == null">
+        <set_value name="$errorMessage" exact="'[yasm.lib.DumpWares] ship was null!'"/>
+
+        <return>
+          <retval name="wasErrorFree" value="$successResult"/>
+          <retval name="errorMssage" value="$errorMessage"/>
+          <retval name="ordersCreated" value="$ordersCreated"/>
+        </return>
+      </do_if>
+
+      <do_if value="$ship.cargo.list.count lt 1">
+        <!-- Technically not invalid. But we can short circuit everything because the ship has no wares to dump. It's on the caller not to be stupid. -->
+        <set_value name="$successResult" exact="true"/>
+
+        <return>
+          <retval name="wasErrorFree" value="$successResult"/>
+          <retval name="errorMssage" value="$errorMessage"/>
+          <retval name="ordersCreated" value="$ordersCreated"/>
+        </return>
+      </do_if>
+
+      <do_if value="(typeof $jumpRange).isnumeric == false or $jumpRange lt 0">
+        <set_value name="$errorMessage" exact="'[yasm.lib.DumpWares] jumpRange was non-numeric or out of range (less than 0)!'"/>
+
+        <return>
+          <retval name="wasErrorFree" value="$successResult"/>
+          <retval name="errorMssage" value="$errorMessage"/>
+          <retval name="ordersCreated" value="$ordersCreated"/>
+        </return>
+      </do_if>
+
+      <do_if value="$blacklistGroup == null or typeof $blacklistGroup != datatype.blacklistgroup">
+        <set_value name="$errorMessage" exact="'[yasm.lib.DumpWares] blacklistGroup was null or not a group!'"/>
+
+        <return>
+          <retval name="wasErrorFree" value="$successResult"/>
+          <retval name="errorMssage" value="$errorMessage"/>
+          <retval name="ordersCreated" value="$ordersCreated"/>
+        </return>
+      </do_if>
+
+      <do_if value="$allowedFactions == null or typeof $allowedFactions != datatype.list">
+        <set_value name="$errorMessage" exact="'[yasm.lib.DumpWares] allowedFactions was null or not a list!'"/>
+
+        <return>
+          <retval name="wasErrorFree" value="$successResult"/>
+          <retval name="errorMssage" value="$errorMessage"/>
+          <retval name="ordersCreated" value="$ordersCreated"/>
+        </return>
+      </do_if>
+
+      <do_if value="$priorityContainers != null and typeof $priorityContainers != datatype.list">
+        <set_value name="$errorMessage" exact="'[yasm.lib.DumpWares] priorityContainers was provided, but was not a list!'"/>
+
+        <return>
+          <retval name="wasErrorFree" value="$successResult"/>
+          <retval name="errorMssage" value="$errorMessage"/>
+          <retval name="ordersCreated" value="$ordersCreated"/>
+        </return>
+      </do_if>
+      
+      
+      <!-- Main Logic -->
+      <!-- Start foreach to loop through wares currently in cargo. -->
+
+      <set_value name="$wares" exact="$ship.cargo.list.clone"/>
+
+      <do_for_each name="$ware" in="$wares">
+        <!-- RunScript to find offers. -->
+        <set_value name="$findOffersErrored" exact="false"/>
+        <set_value name="$findOffersErrorMessage" exact="null"/>
+        <set_value name="$offers" exact="null"/>
+
+        <run_script name="'yasm.lib.FindOffersForWare'">
+          <param name="ware" value="$ware"/>          
+          <param name="wareAmount" value="$ship.cargo.{$ware}.count * 0.1"/>
+          <param name="minPrice" value="0Cr"/>
+          <param name="maxPrice" value="99999Cr"/>
+          <param name="findBuyOffers" value="true"/>
+          <param name="tradePartner" value="$ship"/>
+          <param name="rangeRefObject" value="$ship"/>
+          <param name="minGateDistance" value="0"/>
+          <param name="maxGateDistance" value="$jumpRange"/>
+          <param name="blacklistGroup" value="$blacklistGroup"/>
+          <param name="allowedFactions" value="$allowedFactions"/>
+          <param name="maxAmountOfOffers" value="3"/>
+          <param name="containers" value="$priorityContainers"/>
+          <param name="onlySearchContainers" value="false"/>
+          <save_retval name="wasErrorFree" variable="$findOffersErrored"/>
+          <save_retval name="errorMesage" variable="$findOffersErrorMessage"/>
+          <save_retval name="foundOffers" variable="$offers"/>
+        </run_script>
+
+        <!-- Check results, if error then nope on out. -->
+        <do_if value="$findOffersErrored">
+          <set_value name="$errorMessage" exact="'[yasm.lib.DumpWares] Error encountered when attempting to dump wares: %1'.[$findOffersErrorMessage]"/>
+
+          <return>
+            <retval name="wasErrorFree" value="$successResult"/>
+            <retval name="errorMssage" value="$errorMessage"/>
+            <retval name="ordersCreated" value="$ordersCreated"/>
+          </return>
+        </do_if>
+
+        <do_if value="$offers.count gt 0">
+          <!-- Offers are already sorted by priority and then distance (for non-priority offers_. -->
+
+          <set_value name="$sortedOffers" exact="[]"/>
+          <set_value name="$remainingCargoAmount" exact="$ship.cargo.{$ware}.count"/>
+
+          <do_for_each name="$foundOffer" in="$offers">
+            <!-- Sanity check to make sure the offer is still good, since a frame may have passed. -->
+            <do_if value="$foundOffer.available">
+              <!-- Zero this out, in case it still has a value. -->
+              <set_value name="$amount" exact="0"/>
+
+              <clamp_trade_amount trade="$foundOffer" seller="$ship" buyer="$foundOffer.buyer" amount="$foundOffer.amount" result="$amount"/>
+
+              <do_if value="$amount gt 0">
+                <!-- This will effectively have the trade going to "priority" containers last, which I think is fine. Not worth the effort of stuffing offers in another list and reversing it. -->
+                <create_trade_order name="$tradeOrder" object="$ship" tradeoffer="$foundOffer" amount="$amount" immediate="true"/>
+
+                <do_if value="$tradeOrder? == true and $tradeOrder != null">
+                  <set_value name="$ordersCreated" exact="true"/>
+                  <set_value name="$remainingCargoAmount" operation="subtract" exact="$amount"/>
+
+                  <set_value name="$tradeOrder" exact="null"/>
+                </do_if>
+                
+
+                <do_if value="$remainingCargoAmount lt 1">
+                  <break/>
+                </do_if>
+                
+              </do_if>
+            </do_if>
+          </do_for_each>                    
+        </do_if>
+
+        <!-- Performance wait -->
+        <wait min="10ms" max="80ms" />
+      </do_for_each>
+      
+      <set_value name="$successResult" exact="true"/>      
+
+      <!-- All done. -->
+      <return>
+        <retval name="wasErrorFree" value="$successResult"/>
+        <retval name="errorMssage" value="$errorMessage"/>
+        <retval name="ordersCreated" value="$ordersCreated"/>
+      </return>
+    </actions>
+  </attention>
+</aiscript>
