@@ -356,6 +356,7 @@
       <!-- TODO: If no orders were created this run, create a wait order for 30s to 1m. Could probably make this length a parameter. -->
 
       <!-- Ensuring ending on a wait seems to be a thing that needs to be done for reasons. Don't quote me on that, I'm tired. -->
+      <label name="finish"/>
       <wait exact="1ms" />
     </actions>
   </attention>
