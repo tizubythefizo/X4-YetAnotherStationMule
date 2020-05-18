@@ -1,0 +1,276 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<aiscript name="yasm.lib.GetWarePriorities" version="1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="aiscripts.xsd">
+  <!-- 
+      Calculates priorities from a list of offers for their respective buyer or seller. For buyers, lower on hand amount to desired ration means higher priority. For sellers on hand amount closer to target amount is higher priority.
+      0 amount offers are skipped.
+  -->
+  <!-- Will return 4 lists. 1 for critical sell offers, 1 for normal sell offers, 1 for critical buy offers, 1 for normal buy offers. -->
+  <params>
+    <param name="offers" default="[]" comment="A list of offers to determine priorities of. Will check the buyer or seller's target amounts vs on hand amounts."/>
+    <param name="invertPriorities" default="false" comment="Normally for buy offers, lower ration = higher priority and for sellers the opposite. This setting flips that."/>
+    <param name="criticalityThreshold" default="0.15" comment="The number that determines criticality. For buy offers, anything at that amount or lower. For sell offers anything at 1-threshold and higher."/>
+  </params>
+  <init>
+    <set_value name="$debugChance" exact="0"/>
+    <!-- General handling. -->
+    <set_value name="$errorMessage" exact="'Unspecified.'"/>
+
+    <set_value name="$resultTable" exact="table[]"/>
+    <set_value name="$resultTable.{'$supplyBuys'}" exact="[]"/>
+    <set_value name="$resultTable.{'$criticalBuys'}" exact="[]"/>
+    <set_value name="$resultTable.{'$normalBuys'}" exact="[]"/>
+    <set_value name="$resultTable.{'$criticalSells'}" exact="[]"/>
+    <set_value name="$resultTable.{'$normalSells'}" exact="[]"/>
+  </init>
+  <attention min="unknown">
+    <actions>
+      <!-- Parameter Validation -->
+
+      <do_if value="$offers != null and typeof $offers != datatype.list">
+        <set_value name="$errorMessage" exact="'[yasm.lib.GetWarePriorities] offers was provided but was not a list!'"/>
+
+        <return>
+          <retval name="wasErrorFree" value="false"/>
+          <retval name="errorMessage" value="$errorMessage"/>
+          <retval name="resultTable" value="$resultTable"/>
+        </return>
+      </do_if>
+
+      <!-- Probably a user mistake. But not an error condition. -->
+      <do_if value="$offers.count lt 1">
+        <return>
+          <retval name="wasErrorFree" value="true"/>
+          <retval name="errorMessage" value="$errorMessage"/>
+          <retval name="resultTable" value="$resultTable"/>
+        </return>
+      </do_if>
+
+      <do_if value="(typeof $criticalityThreshold).isnumeric == false  or $criticalityThreshold lt 0 or $criticalityThreshold gt 1">
+        <set_value name="$errorMessage" exact="'[yasm.lib.GetWarePriorities] criticalityThreshold was non-numeric or out of range (less than 0 or gt 1)!'"/>
+
+        <return>
+          <retval name="wasErrorFree" value="false"/>
+          <retval name="errorMssage" value="$errorMessage"/>
+          <retval name="resultTable" value="$resultTable"/>
+        </return>
+      </do_if>
+
+      <!-- Main Logic. -->
+      <!-- TODO: Probably need to separate out buy offers for supplies (drone components and such) as its own category, since these can be very low in number but still need to be delivered to build stuff. Could probably also return as a table instead of 4 (5 with supply buy offers) distinct arrays. -->
+      
+      <!-- 
+             Stuff has changed since I wrote APSL. When that was written buy and sells were mutually exclusive. So the calculations I had there won't work anymore.
+             Time to figure out a new way to do this. Here's some data.
+             
+             Trade station buy offers.
+             
+             Offer for TUC-NF II-Warehouse-I-APA-939. | Ware: Energy Cells | Is buy offer? (1) | Offer amount: 0     | Offer offerAmount 6,787 | Offer desiredamount 1,486,968 | Stations current: 172,911 | Stations target stock: 1,666,666 | Stations Max: 10,000,000 | Stations Free: 9,691,372 
+             Offer for TUC-NF II-Warehouse-I-APA-939. | Ware: Food Rations | Is buy offer? (1) | Offer amount: 7,412 | Offer offerAmount 7,412 | Offer desiredamount 1,632,768 | Stations current: 33,898  | Stations target stock: 1,666,666 | Stations Max: 10,000,000 | Stations Free: 9,691,372 
+             Offer for TUC-NF II-Warehouse-I-APA-939. | Ware: Meat         | Is buy offer? (1) | Offer amount: 1,259 | Offer offerAmount 1,259 | Offer desiredamount 277,401   | Stations current: 376     | Stations target stock: 277,777   | Stations Max: 1,666,660  | Stations Free: 1,615,222 
+             Offer for TUC-NF II-Warehouse-I-APA-939. | Ware: Spices       | Is buy offer? (1) | Offer amount: 2,512 | Offer offerAmount 2,512 | Offer desiredamount 553,548   | Stations current: 2,007   | Stations target stock: 555,555   | Stations Max: 3,333,330  | Stations Free: 3,230,454 
+             Offer for TUC-NF II-Warehouse-I-APA-939. | Ware: Water        | Is buy offer? (1) | Offer amount: 1,193 | Offer offerAmount 1,193 | Offer desiredamount 262,700   | Stations current: 15,077  | Stations target stock: 277,777   | Stations Max: 1,666,660  | Stations Free: 1,615,222 
+             Offer for TUC-NF II-Warehouse-I-APA-939. | Ware: Wheat        | Is buy offer? (1) | Offer amount: 1,887 | Offer offerAmount 1,887 | Offer desiredamount 415,896   | Stations current: 770     | Stations target stock: 416,666   | Stations Max: 2,500,000  | Stations Free: 2,422,843 
+             
+             Same station sells.
+             
+             Offer for TUC-NF II-Warehouse-I-APA-939. | Ware: Energy Cells | Is buy offer? (0) | Offer amount: 172,911 | Offer offerAmount 179,698 | Offer desiredamount 0 | Stations current: 172,911 | Stations target stock: 1,666,666 | Stations Max: 10,000,000 | Stations Free: 9,691,372 
+             Offer for TUC-NF II-Warehouse-I-APA-939. | Ware: Food Rations | Is buy offer? (0) | Offer amount: 33,898  | Offer offerAmount 33,898  | Offer desiredamount 0 | Stations current: 33,898  | Stations target stock: 1,666,666 | Stations Max: 10,000,000 | Stations Free: 9,691,372 
+             Offer for TUC-NF II-Warehouse-I-APA-939. | Ware: Meat         | Is buy offer? (0) | Offer amount: 376     | Offer offerAmount 376     | Offer desiredamount 0 | Stations current: 376     | Stations target stock: 277,777   | Stations Max: 1,666,660  | Stations Free: 1,615,222 
+             Offer for TUC-NF II-Warehouse-I-APA-939. | Ware: Spices       | Is buy offer? (0) | Offer amount: 2,007   | Offer offerAmount 2,007   | Offer desiredamount 0 | Stations current: 2,007   | Stations target stock: 555,555   | Stations Max: 3,333,330  | Stations Free: 3,230,454 
+             Offer for TUC-NF II-Warehouse-I-APA-939. | Ware: Water        | Is buy offer? (0) | Offer amount: 15,077  | Offer offerAmount 15,077  | Offer desiredamount 0 | Stations current: 15,077  | Stations target stock: 277,777   | Stations Max: 1,666,660  | Stations Free: 1,615,222 
+             Offer for TUC-NF II-Warehouse-I-APA-939. | Ware: Wheat        | Is buy offer? (0) | Offer amount: 770     | Offer offerAmount 770     | Offer desiredamount 0 | Stations current: 770     | Stations target stock: 416,666   | Stations Max: 2,500,000  | Stations Free: 2,422,843
+             
+             Mixed station Buys (produces, uses, and exports a thing).
+             
+             Offer for Nopileos' Fortune II Agricultural Goods Factory II-NUS-874. | Ware: Energy Cells     | Is buy offer? (1) | Offer amount: 0     | Offer offerAmount 0     | Offer desiredamount 25,955 | Stations current: 102,780 | Stations target stock: 128,735 | Stations Max: 3,000,000 | Stations Free: 2,366,631 
+             Offer for Nopileos' Fortune II Agricultural Goods Factory II-NUS-874. | Ware: Meat             | Is buy offer? (1) | Offer amount: 7,913 | Offer offerAmount 7,913 | Offer desiredamount 81,892 | Stations current: 3,300   | Stations target stock: 85,192  | Stations Max: 499,998   | Stations Free: 394,437 
+             Offer for Nopileos' Fortune II Agricultural Goods Factory II-NUS-874. | Ware: Medical Supplies | Is buy offer? (1) | Offer amount: 126   | Offer offerAmount 126   | Offer desiredamount 1,296  | Stations current: 0       | Stations target stock: 1,296   | Stations Max: 1,500,000 | Stations Free: 1,183,315 
+             Offer for Nopileos' Fortune II Agricultural Goods Factory II-NUS-874. | Ware: Soja Husk        | Is buy offer? (1) | Offer amount: 132   | Offer offerAmount 132   | Offer desiredamount 1,372  | Stations current: 0       | Stations target stock: 1,372   | Stations Max: 3,000,000 | Stations Free: 2,366,631 
+             Offer for Nopileos' Fortune II Agricultural Goods Factory II-NUS-874. | Ware: Spices           | Is buy offer? (1) | Offer amount: 3,572 | Offer offerAmount 3,572 | Offer desiredamount 36,973 | Stations current: 5,623   | Stations target stock: 136,024 | Stations Max: 999,999   | Stations Free: 788,876 
+             Offer for Nopileos' Fortune II Agricultural Goods Factory II-NUS-874. | Ware: Water            | Is buy offer? (1) | Offer amount: 0     | Offer offerAmount 1,640 | Offer desiredamount 25,817 | Stations current: 78,560  | Stations target stock: 106,017 | Stations Max: 499,998   | Stations Free: 394,437 
+             Offer for Nopileos' Fortune II Agricultural Goods Factory II-NUS-874. | Ware: Wheat            | Is buy offer? (1) | Offer amount: 7,807 | Offer offerAmount 7,807 | Offer desiredamount 80,782 | Stations current: 4,410   | Stations target stock: 153,346 | Stations Max: 750,000   | Stations Free: 591,657 
+             
+             
+             Target == allocated.
+             Can use target for exports.
+             
+             Desired is target - current - reserved when it's a trade ware.
+             Desired on mixed stations is different. It looks as though consumption is taken into account and desired is less than target.
+             Sell offers always have 0 desired.
+             
+             .max the maximum that would fit in storage if storage was empty.
+             .free is how much could fit into storage (takes other wares currently in stock into account).
+             
+             I believe desired amount should be used for determining priority on buy orders, while target should be used on sell offers.
+             Need to use get_ware_reservation with type "buy" to get the reserved incoming amount.
+             (current station amount + incoming reserved) / desired amount (for buys)
+             (current station amount + incoming reserved) / target amount for sells.
+      -->
+
+      <set_value name="$criticalBuyTable" exact="table[]"/>
+      <set_value name="$normalBuyTable" exact="table[]"/>
+      <set_value name="$criticalSellTable" exact="table[]"/>
+      <set_value name="$normalSellTable" exact="table[]"/>
+
+      <!--<debug_text text ="'[yasm.lib.GetWarePriorties]'" filter="general" chance="$debugChance"/>-->
+      <debug_text text ="'[yasm.lib.GetWarePriorties] Starting up! Begining to sort and prioritize. Total offers: %1'.[$offers.count]" filter="general" chance="$debugChance"/>
+
+      <do_for_each name="$offer" in="$offers">
+
+        <debug_text text ="'[yasm.lib.GetWarePriorties] Offer for: %1'.[$offer.ware]" filter="general" chance="$debugChance"/>
+
+        <!-- There's something screwy where empty offers are coming back. If amount is 0, skip it. Not an error, but not a valid offer to evaluate. -->
+        <do_if value="$offer.amount == 0">
+          <debug_text text ="'[yasm.lib.GetWarePriorties] Offer amount is 0, skipping.'" filter="general" chance="$debugChance"/>
+          <continue/>
+        </do_if>
+
+        <set_value name="$station" exact="null"/>
+        <set_value name="$isBuy" exact="null"/>
+        <set_value name="$priorityDivisor" exact="null"/>
+        <!-- -1 isn't a valid priority (at least as far as this loop is concerned). Good way to differentiate between "has received a value this iteration" and "hasn't" -->
+        <set_value name="$priority" exact="-1"/>
+
+        <do_if value="$offer.buyer != null">
+          <debug_text text ="'[yasm.lib.GetWarePriorties] Offer is a buy offer.'" filter="general" chance="$debugChance"/>
+          <!-- It's a buy offer. -->          
+          <!-- Check if it's a supply, and if so just put it in the supply list and continue. -->
+          <!-- Not 100% on if this is the best way to check if an offer is for supplies, but it's the only way I've figured out so far. -->
+          <do_if value="$offer.buyer.supplyresources.{$offer.ware}.exists">
+            <!-- Just append directly to the result table's supplies. No need to do anything more since it's an unsorted list. -->
+            <debug_text text ="'[yasm.lib.GetWarePriorties] Ware is a supply. Appending to supply result list.'" filter="general" chance="$debugChance"/>
+            <append_to_list name="$resultTable.$supplyBuys" exact="$offer"/>
+            <continue/>
+          </do_if>
+          
+          <set_value name="$isBuy" exact="true"/>
+          <set_value name="$station" exact="$offer.buyer"/>
+          <set_value name="$priorityDivisor" exact="$offer.desiredamount"/>
+        </do_if>
+        <do_else>
+          <!-- It's a sell offer. -->
+          <set_value name="$isBuy" exact="false"/>
+          <set_value name="$station" exact="$offer.seller"/>
+          <set_value name="$priorityDivisor" exact="$station.cargo.{$offer.ware}.target"/>
+        </do_else>
+
+        <debug_text text ="'[yasm.lib.GetWarePriorties] Priority divisor is %1'.[$priorityDivisor]" filter="general" chance="$debugChance"/>
+
+        <!-- 
+            Make damn sure we aren't trying to divide by 0.
+        -->
+        <do_if value="$priorityDivisor == 0">
+          
+          <do_if value="$isBuy">
+            <debug_text text ="'[yasm.lib.GetWarePriorties] Offer is a buy offer with a 0 priorityDivisor (desiredamount). This shouldnt happen. Skipping.'" filter="general" chance="$debugChance"/>
+            <!-- This shouldn't even be possible. It shouldn't be able to have a positive amount and a 0 desired for buys. Just continue, cause the game itself is broke. -->
+            <continue/>
+          </do_if>
+          <do_else>
+            <!-- If target amount is 0 on a sell offer, it means not only does it not want any, but that it has no allocated space for it. Needs to GTFO. -->
+            <debug_text text ="'[yasm.lib.GetWarePriorties] Offer is a sell offer with a 0 priority divisor (containers target amount). Setting priority to 1.'" filter="general" chance="$debugChance"/>
+            <set_value name="$priority" exact="1f"/>
+          </do_else>
+          
+        </do_if>
+        <!-- the divisor isn't 0. Good to go.-->
+        <do_else>
+          <debug_text text ="'[yasm.lib.GetWarePriorties] Priority divisor is above 0, beginning priority calculation.'" filter="general" chance="$debugChance"/>
+          <set_value name="$incomingReservations" exact="0"/>
+          <set_value name="$fullHeldWareAmount" exact="0"/>
+          <!-- No 0's to worry about. Yay. -->
+          <!-- Get the actual amount held in storage, and get the reserves. Add 'em together, divide by divisor, BAM! Priority.-->
+          <get_ware_reservation ware="$offer.ware" object="$station" type="buy" result="$incomingReservations"/>
+          <set_value name="$fullHeldWareAmount" exact="$station.cargo.{$offer.ware}.count + $incomingReservations"/>
+
+          <set_value name="$priority" exact="($fullHeldWareAmount)f / ($priorityDivisor)f"/>
+          <debug_text text ="'[yasm.lib.GetWarePriorties] container actual stock: %1, container incoming reservations: %2, combined held: %3 , priority assigned: %4'.[$station.cargo.{$offer.ware}.count, $incomingReservations, $fullHeldWareAmount, $priority]" filter="general" chance="$debugChance"/>
+          
+          <!-- If the ware is a trade ware on buy offers, it'll end up always being critical since desiredamount == target with trade wares. Add 1 to priority in this case as a trade ware can never be critical. -->
+          <do_if value="$isBuy and $offer.buyer.tradewares.{$offer.ware}.exists">
+            <set_value name="$priority" operation="add" exact="1"/>
+            <debug_text text ="'[yasm.lib.GetWarePriorties] This is a buy offer and the ware is a tradeware. Increaseing calculated by 1. New priority: %1'.[$priority]" filter="general" chance="$debugChance"/>
+          </do_if>
+        </do_else>
+        
+        <!-- Ok, if we're here it means we should have a good priority. Sanity check it, and if it's good insert into the appropriate table. -->
+        <do_if value="$priority == -1">
+          <debug_text text="'[yasm.lib.GetWarePriorities] Priority calculation error. Priority was null (actual value: %1), but previous checks passed. Skipping ware...'.[$priority]" filter="error" chance="100"/>
+          <continue/>          
+        </do_if>
+
+        <debug_text text ="'[yasm.lib.GetWarePriorties] Chunking ware into appropriate table...'" filter="general" chance="$debugChance"/>
+        
+        <do_if value="$isBuy">
+          <debug_text text ="'[yasm.lib.GetWarePriorties] Reconfirming, this is a buy offer.'" filter="general" chance="$debugChance"/>
+          <do_if value="$priority le $criticalityThreshold">
+            <debug_text text ="'[yasm.lib.GetWarePriorties] Priority is lower than criticality threshold for this offer. This is a critical ware. Appending to critical buy table.'" filter="general" chance="$debugChance"/>
+            <set_value name="$criticalBuyTable.{$offer}" exact="$priority"/>
+            <debug_text text ="'[yasm.lib.GetWarePriorties] Checking that value was inserted. ( %1 )'.[$criticalBuyTable.{$offer}]" filter="general" chance="$debugChance"/>
+          </do_if>
+          <do_else>
+            <debug_text text ="'[yasm.lib.GetWarePriorties] Priority is higher than criticality threshold for this offer. This is a non-critical ware. Appending to normal buy table.'" filter="general" chance="$debugChance"/>
+            <set_value name="$normalBuyTable.{$offer}" exact="$priority"/>
+            <debug_text text ="'[yasm.lib.GetWarePriorties] Checking that value was inserted. ( %1 )'.[$normalBuyTable.{$offer}]" filter="general" chance="$debugChance"/>
+          </do_else>          
+        </do_if>
+        <do_else>
+          <!-- It's a sell. -->
+          <debug_text text ="'[yasm.lib.GetWarePriorties] Reconfirming, this is a sell offer.'" filter="general" chance="$debugChance"/>
+          <!-- Flip the priority to a negative. Higher priority value means "sell this first", but $table.keys.sorted always returns low to high. So flipping to a negative will ensure the highest priority will be the "lowest" actual number. -->
+          <set_value name="$sellPriority" exact="-1 * $priority"/>
+          
+          <do_if value="$priority ge (1 - $criticalityThreshold)">
+            <debug_text text ="'[yasm.lib.GetWarePriorties] Priority is higher than criticality threshold for this offer. This is a critical ware. Appending to critical sell table.'" filter="general" chance="$debugChance"/>
+            <set_value name="$criticalSellTable.{$offer}" exact="$sellPriority"/>
+            <debug_text text ="'[yasm.lib.GetWarePriorties] Checking that value was inserted. ( %1 )'.[$criticalSellTable.{$offer}]" filter="general" chance="$debugChance"/>
+          </do_if>
+          <do_else>
+            <debug_text text ="'[yasm.lib.GetWarePriorties] Priority is lower than criticality threshold for this offer. This is a non-critical ware. Appending to normal sell table.'" filter="general" chance="$debugChance"/>
+            <set_value name="$normalSellTable.{$offer}" exact="$sellPriority"/>
+            <debug_text text ="'[yasm.lib.GetWarePriorties] Checking that value was inserted. ( %1 )'.[$normalSellTable.{$offer}]" filter="general" chance="$debugChance"/>
+          </do_else>          
+        </do_else>                
+
+        <!--<set_value name="$logText" exact="'Offer for %1-%2. | Ware: %3 | Is buy offer? (%4) '.[$station.name, $station.idcode, $offer.ware.name, $isBuy]"/>
+        <set_value name="$logText" operation="add" exact="'| Offer amount: %,1| Offer offerAmount %,2 | Offer desiredamount %,3 '.[$offer.amount, $offer.offeramount, $offer.desiredamount]"/>
+        <set_value name="$logText" operation="add" exact="'| Stations current: %,1 | Stations target stock: %,2 | Stations Max: %,3 | Stations Free: %,4 '.[$station.cargo.{$offer.ware}.count, $station.cargo.{$offer.ware}.target, $station.cargo.{$offer.ware}.max, $station.cargo.{$offer.ware}.free]"/>
+        <debug_text text="$logText" filter="general" chance="100"/>-->
+
+      </do_for_each>
+      
+      <!-- Check if the tables have values and sort them into the result tables. -->
+      <debug_text text ="'[yasm.lib.GetWarePriorties] Begining final priority sorting...'" filter="general" chance="$debugChance"/>
+      <debug_text text ="'[yasm.lib.GetWarePriorties] Number of supply offers: %1'.[$resultTable.$supplyBuys.count]" filter="general" chance="$debugChance"/>
+      <debug_text text ="'[yasm.lib.GetWarePriorties] Critical Buys: %1'.[$criticalBuyTable.keys.list.count]" filter="general" chance="$debugChance"/>
+      <do_if value="$criticalBuyTable.keys.list.count gt 0">        
+        <set_value name="$resultTable.$criticalBuys" exact="$criticalBuyTable.keys.sorted"/>
+        <debug_text text ="'[yasm.lib.GetWarePriorties] Sorted critical buys: %1'.[$resultTable.$criticalBuys.count]" filter="general" chance="$debugChance"/>
+      </do_if>
+
+      <debug_text text ="'[yasm.lib.GetWarePriorties] Normal Buys: %1'.[$normalBuyTable.keys.list.count]" filter="general" chance="$debugChance"/>
+      <do_if value="$normalBuyTable.keys.list.count gt 0">
+        <set_value name="$resultTable.$normalBuys" exact="$normalBuyTable.keys.sorted"/>
+        <debug_text text ="'[yasm.lib.GetWarePriorties] Sorted normal buys: %1'.[$resultTable.$normalBuys.count]" filter="general" chance="$debugChance"/>
+      </do_if>
+
+      <debug_text text ="'[yasm.lib.GetWarePriorties] Critical sells: %1'.[$criticalSellTable.keys.list.count]" filter="general" chance="$debugChance"/>
+      <do_if value="$criticalSellTable.keys.list.count gt 0">
+        <set_value name="$resultTable.$criticalSells" exact="$criticalSellTable.keys.sorted"/>        
+        <debug_text text ="'[yasm.lib.GetWarePriorties] Sorted critical sells: %1'.[$resultTable.$criticalSells.count]" filter="general" chance="$debugChance"/>
+      </do_if>
+
+      <debug_text text ="'[yasm.lib.GetWarePriorties] Normal sells: %1'.[$normalSellTable.keys.list.count]" filter="general" chance="$debugChance"/>
+      <do_if value="$normalSellTable.keys.list.count">
+        <set_value name="$resultTable.$normalSells" exact="$normalSellTable.keys.sorted"/>
+        <debug_text text ="'[yasm.lib.GetWarePriorties] Sorted normal sells: %1'.[$resultTable.$normalSells.count]" filter="general" chance="$debugChance"/>
+      </do_if>
+
+      <return>
+        <retval name="wasErrorFree" value="true"/>
+        <retval name="errorMessage" value="$errorMessage"/>
+        <retval name="resultTable" value="$resultTable"/>
+      </return>
+    </actions>
+  </attention>
+</aiscript>

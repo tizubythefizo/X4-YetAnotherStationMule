@@ -167,7 +167,7 @@
           <debug_to_file 
             name="$debugFileName" 
             directory="$debugFileDirectory" 
-            text="'[YASM GENERAL] Ship was assigned to commander name: %1 idcode: %2 with the assignment of %3'.[this.assignedcontrolled.commander.name, this.assignedcontrolled.commander.idcode, this.assignedcontrolled.assignment]" 
+            text="'[YASM General] Ship was assigned to commander name: %1 idcode: %2 with the assignment of %3'.[this.assignedcontrolled.commander.name, this.assignedcontrolled.commander.idcode, this.assignedcontrolled.assignment]" 
             chance="$debugChance" 
           />
 
@@ -203,9 +203,10 @@
             append="true" 
             chance="$debugChance" 
           />
-
+          
           <!-- Get exports from the home station and call to have them added to trade partner. No need for blacklist checking, as the user specified this station. -->
           <find_sell_offer seller="$homeStation" tradepartner="this.ship" multiple="true" result="$homeStationExports" />
+          <!-- TODO: Create a var to hold whether there's imports or not, rather than multi-checking exists and gt all over the place? -->
 
           <!-- No need to even try if there's no sell offers. -->
           <do_if value="$homeStationExports.count gt 0">
@@ -252,7 +253,6 @@
         
         
         <!-- First, dump wares if it's got stuff in its cargo. -->
-        <!-- TODO: Make a generic "Dump Wares" script. -->
         <do_if value="this.ship.cargo.list.count gt 0">
           <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Existing wares found in cargo. Trying to dump them. Wares: %1'.[this.ship.cargo.list]" chance="$debugChance" />
           
@@ -295,29 +295,32 @@
             <save_retval name="errorMssage" variable="$dumpWaresErrorMessage"/>
             <save_retval name="ordersCreated" variable="$dumpWaresCreatedOrders"/>
           </run_script>
-        </do_if>
 
-        <do_if value="$dumpWaresErrorFree == false">
-          <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM ERROR] Error encountered when attempting to dump wares. Some orders may have been created. Error message: %1'.[$dumpWaresErrorMessage]" chance="$debugChance" />
-          <wait exact="30s"/>
-          <resume label="finish"/>
-        </do_if>
+          <do_if value="$dumpWaresErrorFree == false">
+            <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM ERROR] Error encountered when attempting to dump wares. Some orders may have been created. Error message: %1'.[$dumpWaresErrorMessage]" chance="$debugChance" />
+            <wait exact="30s"/>
+            <resume label="finish"/>
+          </do_if>
 
-        <do_if value="$dumpWaresCreatedOrders">
-          <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Attempted to dump wares. Orders were created. Mule will now conduct trades.'" chance="$debugChance" />
-        </do_if>
-        <do_else>
-          <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Attempted to dump wares, but there were no valid offers in the allowed range.'" chance="$debugChance" />
-          <!-- Logbook and wait a few minutes. -->
-          <set_value name="$logTitle" exact="{966602,241}"/>
-          <set_value name="$logText" exact="{966602,242}.[this.ship.name, this.ship.idcode]"/>
-          
-          <write_to_logbook title="$logTitle" text="$logText" category="upkeep" interaction="showonmap" object="this.ship" />
-        </do_else>
+          <do_if value="$dumpWaresCreatedOrders">
+            <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Attempted to dump wares. Orders were created. Mule will now conduct trades.'" chance="$debugChance" />
+            <resume label="finish"/>
+          </do_if>
+          <do_else>
+            <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Attempted to dump wares, but there were no valid offers in the allowed range.'" chance="$debugChance" />
+            <!-- Logbook and wait a few minutes. -->
+            <set_value name="$logTitle" exact="{966602,241}"/>
+            <set_value name="$logText" exact="{966602,242}.[this.ship.name, this.ship.idcode]"/>
 
-        <!-- TODO: Nix this wait. -->
-        <wait exact="10s" />
-        <resume label="finish"/>
+            <!-- TODO: Also notify player? This could potentially be an indefinite condition. -->
+            <write_to_logbook title="$logTitle" text="$logText" category="upkeep" interaction="showonmap" object="this.ship" />
+
+            <!-- Want to wait a decent amount for the chance more orders come on-line. -->
+            <wait min="2min" max="5min" />
+            <resume label="finish"/>
+          </do_else>
+
+        </do_if>             
 
         <!-- 
             Determine Home Station's resource (consumed wares that this station is not also selling, since selling indicates an excess) priorities. 
@@ -326,15 +329,153 @@
             as importing and exporting the same good between two stations could cause an infinite loop for a given ware.
         -->
 
+        <find_buy_offer tradepartner="this.ship" buyer="$homeStation" multiple="true" result="$homeStationImports" />
+
+        <!-- TODO: Need to better handle "no imports" (and no exports, in the next section). Probably a var to check. -->
+        <do_if value="$homeStationImports.count gt 0">
+
+          <set_value name="$importPrePriorityLogText" exact="'[YASM General] The home station needs goods. Getting priorities: '"/>
+          
+          <do_for_each name="$offer" in="$homeStationImports">
+            <set_value name="$importPrePriorityLogText" operation="add" exact="'*%1* '.[$offer.ware.name]"/>
+          </do_for_each>
+
+          <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="$importPrePriorityLogText" chance="$debugChance" />
+          
+          <set_value name="$wasImportPrioritiesErrorFree" exact="null"/>
+          <set_value name="$importPrioritiesErrorMessage" exact="null"/>
+          <set_value name="$importPriorityResultTable" exact="null"/>
+          <set_value name="$supplyImports" exact="[]"/>
+          <set_value name="$criticalImports" exact="[]"/>
+          <set_value name="$imports" exact="[]"/>
+          
+          <run_script name="'yasm.lib.GetWarePriorities'">
+            <param name="offers" value="$homeStationImports"/>
+            <param name="invertPriorities" value="false"/>
+            <param name="criticalityThreshold" value="0.15"/>
+            <save_retval name="wasErrorFree" variable="$wasImportPrioritiesErrorFree"/>
+            <save_retval name="errorMessage" variable="$importPrioritiesErrorMessage"/>
+            <save_retval name="resultTable" variable="$importPriorityResultTable"/>
+          </run_script>
+
+          <set_value name="$supplyImports" exact="$importPriorityResultTable.$supplyBuys"/>
+          <set_value name="$criticalImports" exact="$importPriorityResultTable.$criticalBuys"/>
+          <set_value name="$imports" exact="$importPriorityResultTable.$normalBuys"/>
+
+          <!-- Logging import priority stuff. -->
+          <set_value name="$importPriorityLogText" exact="'[YASM General] Priorities recieved. '"/>
+
+          <do_if value="$supplyImports.count gt 0">
+            <set_value name="$importPriorityLogText" operation="add" exact="'Supply imports: '"/>
+
+            <do_for_each name="$offer" in="$supplyImports">
+              <set_value name="$importPriorityLogText" operation="add" exact="'*%1* '.[$offer.ware.name]"/>
+            </do_for_each>
+          </do_if>
+          <do_else>
+            <set_value name="$importPriorityLogText" operation="add" exact="'No supplies to import. '"/>
+          </do_else>
+          
+          <do_if value="$criticalImports.count gt 0">
+            <set_value name="$importPriorityLogText" operation="add" exact="'Critical imports (in order): '"/>
+            <do_for_each name="$offer" in="$criticalImports">              
+              <set_value name="$importPriorityLogText" operation="add" exact="'*%1* '.[$offer.ware.name]"/>
+            </do_for_each>
+          </do_if>
+          <do_else>
+            <set_value name="$importPriorityLogText" operation="add" exact="'No imports are critical. '"/>
+          </do_else>
+
+          <do_if value="$imports.count gt 0">
+            <set_value name="$importPriorityLogText" operation="add" exact="'Non-critical imports (in order): '"/>
+            <do_for_each name="$offer" in="$imports">
+              <set_value name="$importPriorityLogText" operation="add" exact="'*%1* '.[$offer.ware.name]"/>
+            </do_for_each>
+          </do_if>
+          <do_else>
+            <set_value name="$importPriorityLogText" operation="add" exact="'No non-critical imports. '"/>
+          </do_else>
+
+          <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="$importPriorityLogText" chance="$debugChance" />
+          <!-- End logging import priority stuff. -->
+        </do_if>
+
         <!-- Determine Home Station's export (products and excess resources) priorities -->
 
+        <do_if value="$homeStationExports == null">
+          <!-- Get exports from the home station and call to have them added to trade partner. No need for blacklist checking, as the user specified this station. -->
+          <find_sell_offer seller="$homeStation" tradepartner="this.ship" multiple="true" result="$homeStationExports" />
+        </do_if>
+
+        <do_if value="$homeStationExports.count gt 0">
+
+          <set_value name="$exportPrePriorityLogText" exact="'[YASM General] The home station needs to export goods. Getting priorities: '"/>
+
+          <do_for_each name="$offer" in="$homeStationExports">
+            <set_value name="$exportPrePriorityLogText" operation="add" exact="'*%1* '.[$offer.ware.name]"/>
+          </do_for_each>
+
+          <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="$exportPrePriorityLogText" chance="$debugChance" />
+          
+          <set_value name="$wasExportPrioritiesErrorFree" exact="null"/>
+          <set_value name="$exportPrioritiesErrorMessage" exact="null"/>
+          <set_value name="$exportPriorityResultsTable" exact="null"/>
+          <set_value name="$criticalExports" exact="[]"/>
+          <set_value name="$exports" exact="[]"/>
+
+          <run_script name="'yasm.lib.GetWarePriorities'">
+            <param name="offers" value="$homeStationExports"/>
+            <param name="invertPriorities" value="false"/>
+            <param name="criticalityThreshold" value="0.15"/>
+            <save_retval name="wasErrorFree" variable="$wasExportPrioritiesErrorFree"/>
+            <save_retval name="errorMessage" variable="$exportPrioritiesErrorMessage"/>
+            <save_retval name="resultTable" variable="$exportPriorityResultsTable"/>
+          </run_script>
+
+          <set_value name="$criticalExports" exact="$exportPriorityResultsTable.$criticalSells"/>
+          <set_value name="$exports" exact="$exportPriorityResultsTable.$normalSells"/>
+
+          <!-- Export priority logging stuff -->
+          <set_value name="$exportPriorityLogText" exact="'[YASM General] Export priorities recieved. '"/>
+
+          <do_if value="$criticalExports.count gt 0">
+            <set_value name="$exportPriorityLogText" operation="add" exact="'Critical exports (in order): '"/>
+            <do_for_each name="$offer" in="$criticalExports">
+              <set_value name="$exportPriorityLogText" operation="add" exact="'*%1* '.[$offer.ware.name]"/>
+            </do_for_each>
+          </do_if>
+          <do_else>
+            <set_value name="$exportPriorityLogText" operation="add" exact="'No exports are critical. '"/>
+          </do_else>
+
+          <do_if value="$exports.count gt 0">
+            <set_value name="$exportPriorityLogText" operation="add" exact="'Non-critical exports (in order): '"/>
+            <do_for_each name="$offer" in="$exports">
+              <set_value name="$exportPriorityLogText" operation="add" exact="'*%1* '.[$offer.ware.name]"/>
+            </do_for_each>
+          </do_if>
+          <do_else>
+            <set_value name="$exportPriorityLogText" operation="add" exact="'No non-critical wares. '"/>
+          </do_else>
+
+          <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="$exportPriorityLogText" chance="$debugChance" />
+          <!-- End export priority logging stuff -->
+        </do_if>                
+
+        <!-- TODO: Nix this wait. -->
+        <wait exact="10s" />
+        <resume label="finish"/>
+        
+        <!-- Got all the prioritized import/exports set up. Time to check to see if stuff needs doin' -->
         <!-- 
-            If set, check trade partner first to see if it has any of the resource priorities, and create a list of possible matches, 
+            If set, check trade partner first to see if it has any of the import priorities, and create a list of possible matches, 
             if trade partner isn't set or has no matches, check stations in range. Remember for buy orders to filter out amounts that don't 
             fill a significant amount of the hull.           
         -->
+        
 
         <!-- If ExportToOtherStationsFirst check stations other than the trade partner stations in range and make a list of matches (sort by distance to home if possible), if there's nothing or this option is not set, check the trade partner station -->
+        
 
         <!-- Check to see if we have matches. If we do check export vs import priorities (which one to do first). -->        
 
@@ -354,9 +495,10 @@
 
 
       <!-- TODO: If no orders were created this run, create a wait order for 30s to 1m. Could probably make this length a parameter. -->
-
+      
       <!-- Ensuring ending on a wait seems to be a thing that needs to be done for reasons. Don't quote me on that, I'm tired. -->
       <label name="finish"/>
+      
       <wait exact="1ms" />
     </actions>
   </attention>
