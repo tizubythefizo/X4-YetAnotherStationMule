@@ -111,8 +111,55 @@
       <set_value name="$cargoCapacityThreshold" exact="0.35" />
       <set_value name="$cargoCapacityCriticalThreshold" exact="0.03" />
     </do_elseif>
+    
+    <!-- Skill check chances -->
+    <!-- Pilot skip orders chance. -->
+    <set_value name="$pilotScrewUpChance" exact="0" />
+    <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Pilots piloting skill is %1'.[this.ship.pilot.skill.piloting]" append="true" chance="$debugChance" />
+    
+    <do_if value="this.ship.pilot.skill.piloting lt 2">
+      <set_value name="$pilotScrewUpChance" exact="10" />
+    </do_if>
+    <do_elseif value="this.ship.pilot.skill.piloting lt 4">
+      <set_value name="$pilotScrewUpChance" exact="5" />
+    </do_elseif>
+    <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Pilot screw up chance is %1'.[$pilotScrewUpChance]" append="true" chance="$debugChance" />
+    
+    <!-- Pilot screw up cargo modifier -->
+    <set_value name="$cargoScrewupModifier" exact="1f"/>
 
-    <set_command_action commandaction="commandaction.standingby" />
+    <do_if value="this.ship.pilot.skill.piloting lt 2">
+      <set_value name="$cargoScrewupModifier" exact="0.8"/>
+    </do_if>
+    <do_elseif value="this.ship.pilot.skill.piloting lt 4">
+      <set_value name="$cargoScrewupModifier" exact="0.9"/>
+    </do_elseif>
+    <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Pilot cargo screw up modifier is %1'.[$cargoScrewupModifier]" append="true" chance="$debugChance" />
+    
+    <!-- Commander screw up priority chance. -->
+    <set_value name="$commanderPriorityScrewupChance" exact="0"/>
+    <set_value name="$managementCommander" exact="this.ship.pilot"/>
+    
+    <!-- Prefer the ship's immediate commander. -->
+    <do_if value="this.ship.commander.isoperational and this.ship.commander.tradenpc.exists">
+      <set_value name="$managementCommander" exact="this.ship.commander.tradenpc"/>
+    </do_if>
+    <!-- Fall back to home station. Can happen when makeSub is false. -->
+    <do_elseif value="$homeStation.isoperational and $homeStation.tradenpc.exists">
+      <set_value name="$managementCommander" exact="$homeStation.tradenpc"/>
+    </do_elseif>
+
+    <do_if value="$managementCommander.skill.management lt 2">
+      <set_value name="$commanderPriorityScrewupChance" exact="20"/>
+    </do_if>
+    <do_elseif value="$managementCommander.skill.management lt 4">
+      <set_value name="$commanderPriorityScrewupChance" exact="10"/>
+    </do_elseif>
+    <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Management priority screwup chance is %1'.[$commanderPriorityScrewupChance]" append="true" chance="$debugChance" />
+
+    <!-- Last bit of init stuff. -->
+    <set_value name="$waitOrderTime" exact="1h"/>
+    <set_command_action commandaction="commandaction.calculating" />
     <include_interrupt_actions ref="GetBlacklistgroup"/>
   </init>
   <attention min="unknown">
@@ -191,7 +238,8 @@
 
       </do_if>
 
-      <do_if value="$homeStation.isoperational">
+      <!-- Only need to do home station stuff if the home station is operational and has a manager. -->
+      <do_if value="$homeStation.isoperational and $homeStation.tradenpc.exists">
         <!-- Next check if any wares need to be added from the home station to the trade partner if the related parameter is true. -->
 
         <!-- Defining a spot for getting home station exports now. If adding wares it'll be needed right away, otherwise it may not be needed till later. -->
@@ -212,6 +260,7 @@
 
           <!-- No need to even try if there's no sell offers. -->
           <do_if value="$homeStationExports.count gt 0">
+            <set_command_action commandaction="commandaction.searchingtrades" />
             <set_value name="$addWaresSuccessResult" exact="false"/>
             <set_value name="$addWaresErrorMesage" exact="null"/>
             <set_value name="$addedWares" exact="null"/>
@@ -247,12 +296,7 @@
           <do_else>
             <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] No exports to add to trade partner. Skipping...'" chance="$debugChance" />
           </do_else>
-        </do_if>
-
-        <do_if value="this.assignedcontrolled.order.id == 'YetAnotherStationMule'">
-          <set_order_syncpoint_reached order="this.assignedcontrolled.order" />
-        </do_if>
-
+        </do_if>        
 
         <!-- First, dump wares if it's got stuff in its cargo. -->
         <do_if value="this.ship.cargo.list.count gt 0">
@@ -335,6 +379,7 @@
 
         <!-- TODO: Need to better handle "no imports" (and no exports, in the next section). Probably a var to check. -->
         <do_if value="$homeStationImports.count gt 0">
+          <!-- Dumping wares ignores skill checks. The wares just need to go. -->
 
           <set_value name="$importPrePriorityLogText" exact="'[YASM General] The home station needs goods. Getting priorities: '"/>
 
@@ -463,12 +508,20 @@
           <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="$exportPriorityLogText" chance="$debugChance" />
           <!-- End export priority logging stuff -->
         </do_if>
+        
+        <!-- Skill based stuff rundown. -->
+        <!-- Commander will get a little XP boost every time this ship completes its run. -->
+        <!-- Low skilled pilots (less than 1 star piloting) might just decide to skip all of this. Even when the commander is skilled. Average (2-3) have a low chance of this happening. -->
+        <!-- Low skilled commanders (if present) have a chance of "screwing up" by not "assigning" the highest priority. Average skilled have less of a chance of this happening. -->
+        <!-- Low skilled pilots have a chance of further "screwing up" by not taking the full load. Average has less of a chance of this happening. -->
+        <!-- 4 star and up never screw up. -->
+        <!-- 5 star (pilot and commander) have a chance to add extra funds to the home station on successful transfers. -->
 
-        <!-- TODO: Only do the following stuff if the commander's trade NPC is available? Or do it but do it "badly". Actually without a manager I don't think a station will even have buy offers outside of build storage. Need to check that and take that situation into account. -->
-        <!-- 
-              TODO: Find a way to factor in skills. Redo jump ranges as well. Have skilled manager enhance pilots skills for pilot related things (i.e. max skilled pilot range, then add to that max range with a skilled manager.
-              Managers affect things like selecting trades (pilots management skill can enhance this).
-        -->
+        <do_if value="true" chance="100 - $pilotScrewUpChance">
+          <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Pilot is taking a union break!'" append="true" chance="$debugChance" />
+          <set_value name="$waitOrderTime" min="2m" max="5m"/>
+          <resume label="setWaitOrder"/>
+        </do_if>
 
         <!-- Got all the prioritized import/exports set up. Time to check to see if stuff needs doin' -->
         <!-- 
@@ -490,6 +543,8 @@
         <wait exact="10s" />
         <resume label="finish"/>
 
+        
+        
         <!-- 
             If there were no valid trades found, and ServiceOtherStationsWhenIdle is true, run_script yasm.order.RoamingMule as a non-infinite (1 time) order.
         -->
@@ -497,15 +552,39 @@
       </do_if>
       <do_else>
         <!-- The station isn't operational. Which usually indicates it's been destroyed. Should probably see if its currently a subordinate and unsub it and change the order to hold and wait or something. -->
-
-
+        <!-- TODO: Set wait order? -->
+        
+        <!-- If the station isn't operational, it needs to release itself if it has a commander, notify the player, and set up a long wait. -->
+        <do_if value="$homeStation.isoperational == false">
+          <!-- Do I need to worry about the case where a trade fleet commander dies and is reassigning stuff? For now, no, since that isn't vanilla behavior. We'll need to see what people using civ fleets report. -->
+          <do_if value="this.ship.commander? == true">
+            <!-- Commander isn't operational, but the property for it exists and has been set. Remove. -->
+            <remove_object_commander object="this.ship"/>
+          </do_if>
+          <set_value name="$waitOrderTime" exact="3h"/>
+        </do_if>
+        <do_else>
+          <!-- Station is operational, but no trade npc. Just wait a while and check back. -->
+          <set_value name="$waitOrderTime" exact="15min"/>
+        </do_else>
       </do_else>
 
-
       <!-- TODO: If no orders were created this run, create a wait order for 30s to 1m. Could probably make this length a parameter. -->
-
+      <label name="setWaitOrder"/>
+      <!-- Create order ID wait? -->
+      <create_order id="'Wait'" object="this.ship" immediate="true" override="true">
+        <param name="timeout" value="$waitOrderTime"/>
+      </create_order>
+      
       <!-- Ensuring ending on a wait seems to be a thing that needs to be done for reasons. Don't quote me on that, I'm tired. -->
       <label name="finish"/>
+      
+      <do_if value="this.assignedcontrolled.order.id == 'YetAnotherStationMule'">
+        <set_order_syncpoint_reached order="this.assignedcontrolled.order" />
+      </do_if>
+      
+      <!-- Apply any rewards... -->
+      <!-- TODO: Rewards as interrupt action? -->
 
       <wait exact="1ms" />
     </actions>
