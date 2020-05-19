@@ -517,6 +517,7 @@
         <!-- 4 star and up never screw up. -->
         <!-- 5 star (pilot and commander) have a chance to add extra funds to the home station on successful transfers. -->
 
+        <!-- Union break skill check. -->
         <do_if value="true" chance="100 - $pilotScrewUpChance">
           <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Pilot is taking a union break!'" append="true" chance="$debugChance" />
           <set_value name="$waitOrderTime" min="2m" max="5m"/>
@@ -524,6 +525,7 @@
         </do_if>
 
         <!-- Got all the prioritized import/exports set up. Time to check to see if stuff needs doin' -->
+        <!-- TODO: Remember to add a chance for a priority to be skipped in the loop (for imports and for exports). -->
         <!-- 
             If set, check trade partner first to see if it has any of the import priorities, and create a list of possible matches, 
             if trade partner isn't set or has no matches, check stations in range. Remember for buy orders to filter out amounts that don't 
@@ -546,7 +548,7 @@
         
         
         <!-- 
-            If there were no valid trades found, and ServiceOtherStationsWhenIdle is true, run_script yasm.order.RoamingMule as a non-infinite (1 time) order.
+            If there were no valid trades found, and ServiceOtherStationsWhenIdle is true, try to service other stations in range. This should probably be a library call.
         -->
         <!-- TODO: Roaming mules should only ever look at the pilot's skill for determining trades (max range can still factor in home station manager buff). -->
       </do_if>

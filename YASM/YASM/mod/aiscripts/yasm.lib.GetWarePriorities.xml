@@ -4,7 +4,7 @@
       Calculates priorities from a list of offers for their respective buyer or seller. For buyers, lower on hand amount to desired ration means higher priority. For sellers on hand amount closer to target amount is higher priority.
       0 amount offers are skipped.
   -->
-  <!-- Will return 4 lists. 1 for critical sell offers, 1 for normal sell offers, 1 for critical buy offers, 1 for normal buy offers. -->
+  <!-- Will return 5 lists. 1 for supplies, 1 for critical sell offers, 1 for normal sell offers, 1 for critical buy offers, 1 for normal buy offers. Wraped up in a results table. -->
   <params>
     <param name="offers" default="[]" comment="A list of offers to determine priorities of. Will check the buyer or seller's target amounts vs on hand amounts."/>
     <param name="invertPriorities" default="false" comment="Normally for buy offers, lower ration = higher priority and for sellers the opposite. This setting flips that."/>
