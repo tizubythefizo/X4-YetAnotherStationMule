@@ -25,7 +25,8 @@
   <attention min="unknown">
     <actions>
       <!-- Parameter Validation -->
-
+      <!-- Null checking just in case the caller passes in null. -->
+      <!-- TODO: I might be able to avoid null checks, as the type check itself may be sufficient. Need to verify. -->
       <do_if value="$offers != null and typeof $offers != datatype.list">
         <set_value name="$errorMessage" exact="'[yasm.lib.GetWarePriorities] offers was provided but was not a list!'"/>
 
