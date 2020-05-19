@@ -19,9 +19,9 @@
       <param name="serviceOtherStationsWhenIdle" required="false" type="bool" default="false" text="{966602,209}" comment="Whether this ship should attempt to service other stations (roam) when it has nothing else to do." />
       <param name="maxJumpRange" required="false" type="number" default="0"  text="{966602,210}" comment="The absolute maximum jumping range to be considered for roaming transports">
         <!--We don't want mules covering large areas of space. So the maximum a station mule will ever travel will be 5 jumps. Use a roaming mule for farther distance.-->
-        <input_param name="startvalue" value="0"/>
+        <input_param name="startvalue" value="6"/>
         <input_param name="min" value="0"/>
-        <input_param name="max" value="5"/>
+        <input_param name="max" value="6"/>
         <input_param name="step" value ="1"/>
       </param>
       <!-- This is currently bugged. A wares list after a required parameter breaks the UI for default orders. Wares lists (probably lists in general) break when there's another param that's required. -->
@@ -40,6 +40,28 @@
     </requires>
   </order>
   <interrupts>
+    <library>
+      <actions name="yasm.order.StationMule.CalculateJumpRange">
+        <!-- 
+             Jump range is initially dependant on the pilot's skill. This will, alone, be a max range of 3. The home station's manager skill
+             is additive, adding up to another 3 max jumps.
+        -->
+        <!-- Doing the jump range using do_ifs instead of a fancy one liner with several nested .max's for readability. -->        
+        <set_value name="$jumpRange" exact="([1, this.ship.pilot.skill.piloting].max / 5)i"/>
+
+        <!-- Note: Using something like civ fleets will have this be another ship. In which case it's possible for subordinates to have less range than their commander, which I think is a good way to handle it. -->
+        <do_if value="this.ship.commander.isoperational and this.ship.commander.tradenpc.exists">
+          <do_if value="this.ship.commander.tradenpc.skill.management gt this.ship.pilot.skill.piloting">
+            <set_value name="$jumpRange" operation="add" exact="([this.ship.commander.tradenpc.skill.management] / 5)i"/>
+          </do_if>
+        </do_if>
+
+        <!-- Clamp max jump range to player's specified. -->
+        <do_if value="$jumpRange gt $maxJumpRange">
+          <set_value name="$jumpRange" exact="$maxJumpRange"/>
+        </do_if>
+      </actions>
+    </library>
     <handler ref="SectorChangeHandler" />
     <handler ref="AttackHandler" />
     <handler ref="MissileLockHandler" />
@@ -63,22 +85,9 @@
       append="true"
       chance="$debugChance"
     />
-    
+
     <!-- Jump Range -->
-    <!-- Doing the jump range using do_ifs instead of a fancy one liner with several nested .max's for readability. -->
-    <set_value name="$jumpRange" exact="([1, this.ship.pilot.skill.piloting].max / 3)i"/>
-
-    <do_if value="this.ship.commander.exists and this.ship.commander.tradenpc.exists">
-      <do_if value="this.ship.commander.tradenpc.skill.management gt this.ship.pilot.skill.piloting">
-        <set_value name="$jumpRange" exact="([this.ship.commander.tradenpc.skill.management] / 3)i"/>
-      </do_if>
-    </do_if>
-
-    <!-- Clamp max jump range. -->
-    <do_if value="$jumpRange gt $maxJumpRange">
-      <set_value name="$jumpRange" exact="$maxJumpRange"/>
-    </do_if>
-
+    <include_interrupt_actions ref="yasm.order.StationMule.CalculateJumpRange"/>
     <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] jumpRange calcuated to %1'.[$jumpRange]" chance="$debugChance" />
 
     <!-- Ship Cargo Capacity Thresholds -->
@@ -101,18 +110,18 @@
     <do_elseif value="this.ship.isclass.ship_xl == true">
       <set_value name="$cargoCapacityThreshold" exact="0.35" />
       <set_value name="$cargoCapacityCriticalThreshold" exact="0.03" />
-    </do_elseif>   
-    
-    <set_command_action commandaction="commandaction.standingby" />    
+    </do_elseif>
+
+    <set_command_action commandaction="commandaction.standingby" />
     <include_interrupt_actions ref="GetBlacklistgroup"/>
   </init>
   <attention min="unknown">
     <actions>
-      <!-- Parameter Validation?. This should probably eventually be done. Other scripts could call this as an order even though I don't intend it. -->      
+      <!-- Parameter Validation?. This should probably eventually be done. Other scripts could call this as an order even though I don't intend it. -->
       <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Starting actions...'" append="true" chance="$debugChance" />
-      
+
       <!-- Parameter Validation -->
-      
+
       <!-- List off parameters in debug_to_file -->
       <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Home Station: %1-%2'.[$homeStation.name, $homeStation.idcode]" append="true" chance="$debugChance" />
 
@@ -124,7 +133,7 @@
       <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Add exports to trade partner? %1'.[$addExportsToTradePartner]" append="true" chance="$debugChance" />
       <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Transport Illegal Wares? %1'.[$transportIllegalWares]" append="true" chance="$debugChance" />
       <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Prioritize exporting to other nearby stations before trade partner? %1'.[$exportToOtherStationsFirst]" append="true" chance="$debugChance" />
-      <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Prioritize Build Storage? %1'.[$prioritizeBuidlStorage]" append="true" chance="$debugChance" />      
+      <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Prioritize Build Storage? %1'.[$prioritizeBuidlStorage]" append="true" chance="$debugChance" />
       <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Service other stations when idle? %1'.[$serviceOtherStationsWhenIdle]" append="true" chance="$debugChance" />
       <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Max Jump Range: %1'.[$maxJumpRange]" append="true" chance="$debugChance" />
 
@@ -132,12 +141,12 @@
       <!-- TODO: Check if the this UI allows assigning to a build storage (station that is planned but not yet built). -->
       <do_if value="($makeSubordinateToHomeStation and $homeStation.isoperational) and this.assignedcontrolled.commander != $homeStation">
 
-        <debug_to_file 
-          name="$debugFileName" 
-          directory="$debugFileDirectory" 
-          text="'[YASM General] Assigning this ship as a subordinate to the home station: %1 idcode: %2.'.[$homeStation.name, $homeStation.idcode]" 
-          append="true" 
-          chance="$debugChance" 
+        <debug_to_file
+          name="$debugFileName"
+          directory="$debugFileDirectory"
+          text="'[YASM General] Assigning this ship as a subordinate to the home station: %1 idcode: %2.'.[$homeStation.name, $homeStation.idcode]"
+          append="true"
+          chance="$debugChance"
         />
 
         <set_value name="$madeSubordinateErrorFree" exact="false"/>
@@ -156,32 +165,25 @@
         </run_script>
 
         <do_if value="$madeSubordinateErrorFree == false">
-          <debug_to_file 
-            name="$debugFileName" 
-            directory="$debugFileDirectory" 
-            text="'[YASM ERROR!] Error hit when trying to make this ship (name: %1 - id: %2) a subordinate of station (name: %3 - id: %4). Error Message: %5'.[this.ship.name, this.ship.idcode, $homeStation.name, $homeStation.idcode, $makeSubordinateErrorMessage]" 
-            chance="$debugChance" 
+          <debug_to_file
+            name="$debugFileName"
+            directory="$debugFileDirectory"
+            text="'[YASM ERROR!] Error hit when trying to make this ship (name: %1 - id: %2) a subordinate of station (name: %3 - id: %4). Error Message: %5'.[this.ship.name, this.ship.idcode, $homeStation.name, $homeStation.idcode, $makeSubordinateErrorMessage]"
+            chance="$debugChance"
           />
         </do_if>
         <do_elseif value="$wasSubordinateAssigned">
-          <debug_to_file 
-            name="$debugFileName" 
-            directory="$debugFileDirectory" 
-            text="'[YASM General] Ship was assigned to commander name: %1 idcode: %2 with the assignment of %3'.[this.assignedcontrolled.commander.name, this.assignedcontrolled.commander.idcode, this.assignedcontrolled.assignment]" 
-            chance="$debugChance" 
+          <debug_to_file
+            name="$debugFileName"
+            directory="$debugFileDirectory"
+            text="'[YASM General] Ship was assigned to commander name: %1 idcode: %2 with the assignment of %3'.[this.assignedcontrolled.commander.name, this.assignedcontrolled.commander.idcode, this.assignedcontrolled.assignment]"
+            chance="$debugChance"
           />
 
           <!-- New commander assigned, recalc jump rang. -->
-          <do_if value="this.ship.commander.tradenpc.exists and this.ship.commander.tradenpc.skill.management gt this.ship.pilot.skill.piloting">
-            <set_value name="$jumpRange" exact="([this.ship.commander.tradenpc.skill.management].max / 3)i"/>
+          <include_interrupt_actions ref="yasm.order.StationMule.CalculateJumpRange"/>
+          <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] jumpRange recalcuated to %1'.[$jumpRange]" chance="$debugChance" />
 
-            <!-- Clamp max jump range. -->
-            <do_if value="$jumpRange gt $maxJumpRange">
-              <set_value name="$jumpRange" exact="$maxJumpRange"/>
-            </do_if>
-            
-            <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] jumpRange recalcuated to %1'.[$jumpRange]" chance="$debugChance" />
-          </do_if>
         </do_elseif>
         <do_else>
           <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM GENERAL] No assignment made.'" chance="$debugChance" />
@@ -196,14 +198,14 @@
         <set_value name="$homeStationExports" exact="null" />
 
         <do_if value="$addExportsToTradePartner and ($tradePartnerStation != null and $tradePartnerStation.trueowner == this.trueowner)">
-          <debug_to_file 
-            name="$debugFileName" 
-            directory="$debugFileDirectory" 
-            text="'[YASM General] Attempting to add exports from the home station ( %1-%2 ) to the trade partner ( %3-%4. )'.[$homeStation.name, $homeStation.idcode, $tradePartnerStation.name, $tradePartnerStation.idcode]" 
-            append="true" 
-            chance="$debugChance" 
+          <debug_to_file
+            name="$debugFileName"
+            directory="$debugFileDirectory"
+            text="'[YASM General] Attempting to add exports from the home station ( %1-%2 ) to the trade partner ( %3-%4. )'.[$homeStation.name, $homeStation.idcode, $tradePartnerStation.name, $tradePartnerStation.idcode]"
+            append="true"
+            chance="$debugChance"
           />
-          
+
           <!-- Get exports from the home station and call to have them added to trade partner. No need for blacklist checking, as the user specified this station. -->
           <find_sell_offer seller="$homeStation" tradepartner="this.ship" multiple="true" result="$homeStationExports" />
           <!-- TODO: Create a var to hold whether there's imports or not, rather than multi-checking exists and gt all over the place? -->
@@ -213,7 +215,7 @@
             <set_value name="$addWaresSuccessResult" exact="false"/>
             <set_value name="$addWaresErrorMesage" exact="null"/>
             <set_value name="$addedWares" exact="null"/>
-            
+
             <run_script name="'yasm.lib.AddStationTradewares'">
               <param name="targetStation" value="$tradePartnerStation"/>
               <param name="sourceStationSellOffers" value="$homeStationExports"/>
@@ -235,7 +237,7 @@
               <do_for_each name="$logWare" in="$addedWares">
                 <set_value name="$logText" exact="$logText + '*%1* '.[$logWare.name]" />
               </do_for_each>
-              
+
               <write_to_logbook title="$logTitle" text="$logText" category="general" interaction="showonmap" object="$tradePartnerStation" />
             </do_elseif>
             <do_else>
@@ -250,12 +252,12 @@
         <do_if value="this.assignedcontrolled.order.id == 'YetAnotherStationMule'">
           <set_order_syncpoint_reached order="this.assignedcontrolled.order" />
         </do_if>
-        
-        
+
+
         <!-- First, dump wares if it's got stuff in its cargo. -->
         <do_if value="this.ship.cargo.list.count gt 0">
           <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Existing wares found in cargo. Trying to dump them. Wares: %1'.[this.ship.cargo.list]" chance="$debugChance" />
-          
+
           <!-- For each ware, try to sell it off, checking home station and trade partner first. -->
           <set_value name="$priorityContainers" exact="[]"/>
 
@@ -274,7 +276,7 @@
           </do_if>
 
           <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Priority stations for dumping wares: %1'.[$priorityContainers]" chance="$debugChance" />
-          
+
           <!-- For this, sell to anyone who we're not at war with. -->
           <get_factions_by_relation object="this.ship" relation="dock"  result="$tradeFactions"/>
 
@@ -283,7 +285,7 @@
           <set_value name="$dumpWaresErrorFree" exact="false"/>
           <set_value name="$dumpWaresErrorMessage" exact="null"/>
           <set_value name="$dumpWaresCreatedOrders" exact="false"/>
-          
+
           <!-- Call to dump cargo, and finish up this iteration if offers.-->
           <run_script name="'yasm.lib.DumpWares'">
             <param name="ship" value="this.ship"/>
@@ -320,7 +322,7 @@
             <resume label="finish"/>
           </do_else>
 
-        </do_if>             
+        </do_if>
 
         <!-- 
             Determine Home Station's resource (consumed wares that this station is not also selling, since selling indicates an excess) priorities. 
@@ -335,20 +337,20 @@
         <do_if value="$homeStationImports.count gt 0">
 
           <set_value name="$importPrePriorityLogText" exact="'[YASM General] The home station needs goods. Getting priorities: '"/>
-          
+
           <do_for_each name="$offer" in="$homeStationImports">
             <set_value name="$importPrePriorityLogText" operation="add" exact="'*%1* '.[$offer.ware.name]"/>
           </do_for_each>
 
           <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="$importPrePriorityLogText" chance="$debugChance" />
-          
+
           <set_value name="$wasImportPrioritiesErrorFree" exact="null"/>
           <set_value name="$importPrioritiesErrorMessage" exact="null"/>
           <set_value name="$importPriorityResultTable" exact="null"/>
           <set_value name="$supplyImports" exact="[]"/>
           <set_value name="$criticalImports" exact="[]"/>
           <set_value name="$imports" exact="[]"/>
-          
+
           <run_script name="'yasm.lib.GetWarePriorities'">
             <param name="offers" value="$homeStationImports"/>
             <param name="invertPriorities" value="false"/>
@@ -375,10 +377,10 @@
           <do_else>
             <set_value name="$importPriorityLogText" operation="add" exact="'No supplies to import. '"/>
           </do_else>
-          
+
           <do_if value="$criticalImports.count gt 0">
             <set_value name="$importPriorityLogText" operation="add" exact="'Critical imports (in order): '"/>
-            <do_for_each name="$offer" in="$criticalImports">              
+            <do_for_each name="$offer" in="$criticalImports">
               <set_value name="$importPriorityLogText" operation="add" exact="'*%1* '.[$offer.ware.name]"/>
             </do_for_each>
           </do_if>
@@ -416,7 +418,7 @@
           </do_for_each>
 
           <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="$exportPrePriorityLogText" chance="$debugChance" />
-          
+
           <set_value name="$wasExportPrioritiesErrorFree" exact="null"/>
           <set_value name="$exportPrioritiesErrorMessage" exact="null"/>
           <set_value name="$exportPriorityResultsTable" exact="null"/>
@@ -460,32 +462,38 @@
 
           <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="$exportPriorityLogText" chance="$debugChance" />
           <!-- End export priority logging stuff -->
-        </do_if>                
+        </do_if>
 
-        <!-- TODO: Nix this wait. -->
-        <wait exact="10s" />
-        <resume label="finish"/>
-        
+        <!-- TODO: Only do the following stuff if the commander's trade NPC is available? Or do it but do it "badly". Actually without a manager I don't think a station will even have buy offers outside of build storage. Need to check that and take that situation into account. -->
+        <!-- 
+              TODO: Find a way to factor in skills. Redo jump ranges as well. Have skilled manager enhance pilots skills for pilot related things (i.e. max skilled pilot range, then add to that max range with a skilled manager.
+              Managers affect things like selecting trades (pilots management skill can enhance this).
+        -->
+
         <!-- Got all the prioritized import/exports set up. Time to check to see if stuff needs doin' -->
         <!-- 
             If set, check trade partner first to see if it has any of the import priorities, and create a list of possible matches, 
             if trade partner isn't set or has no matches, check stations in range. Remember for buy orders to filter out amounts that don't 
             fill a significant amount of the hull.           
         -->
-        
 
         <!-- If ExportToOtherStationsFirst check stations other than the trade partner stations in range and make a list of matches (sort by distance to home if possible), if there's nothing or this option is not set, check the trade partner station -->
-        
 
-        <!-- Check to see if we have matches. If we do check export vs import priorities (which one to do first). -->        
+
+        <!-- Check to see if we have matches. If we do check export vs import priorities (which one to do first). -->
 
         <!-- Verify amounts in a non-blocking way, and if we fall below any thresholds just move on to the next in the list. Remember to clamp.-->
 
         <!-- If we have some still valid trades, create them and end (end should happen auto-magically, especially if we add a short wait after the create)-->
 
+        <!-- TODO: Nix this wait. -->
+        <wait exact="10s" />
+        <resume label="finish"/>
+
         <!-- 
-            If there were no valid trades found, and ServiceOtherStationsWhenIdle is true, run_script yasm.order.RoamingMule as a non-infinite (1 time) order. 
+            If there were no valid trades found, and ServiceOtherStationsWhenIdle is true, run_script yasm.order.RoamingMule as a non-infinite (1 time) order.
         -->
+        <!-- TODO: Roaming mules should only ever look at the pilot's skill for determining trades (max range can still factor in home station manager buff). -->
       </do_if>
       <do_else>
         <!-- The station isn't operational. Which usually indicates it's been destroyed. Should probably see if its currently a subordinate and unsub it and change the order to hold and wait or something. -->
@@ -495,10 +503,10 @@
 
 
       <!-- TODO: If no orders were created this run, create a wait order for 30s to 1m. Could probably make this length a parameter. -->
-      
+
       <!-- Ensuring ending on a wait seems to be a thing that needs to be done for reasons. Don't quote me on that, I'm tired. -->
       <label name="finish"/>
-      
+
       <wait exact="1ms" />
     </actions>
   </attention>
