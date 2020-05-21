@@ -57,7 +57,6 @@
       </do_if>
 
       <!-- Main Logic. -->
-      <!-- TODO: Probably need to separate out buy offers for supplies (drone components and such) as its own category, since these can be very low in number but still need to be delivered to build stuff. Could probably also return as a table instead of 4 (5 with supply buy offers) distinct arrays. -->
       
       <!-- 
              Stuff has changed since I wrote APSL. When that was written buy and sells were mutually exclusive. So the calculations I had there won't work anymore.

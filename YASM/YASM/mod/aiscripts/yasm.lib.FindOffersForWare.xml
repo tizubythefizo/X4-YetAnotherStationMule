@@ -156,6 +156,8 @@
       </do_if>
 
       <!-- Main Logic -->
+      
+      <!-- TODO: Need to do a dupe check, since the same container could both be part of prioritized list *and* part of areas.-->
 
       <!-- First handle containers if there are any to check. -->
       <do_if value="$containers != null and $containers.count gt 1">
@@ -171,14 +173,14 @@
             <find_buy_offer tradepartner="$tradePartner" buyer="$container" wares="$ware" result="$offerResult">
               <price min="$minPrice" max="$maxPrice"/>
               <amount min="$wareAmount"/>
-              <match_buyer tradesknownto="this.owner" />
+              <match_buyer tradesknownto="$tradePartner.trueowner" />
             </find_buy_offer>
           </do_if>
           <do_else>
             <find_sell_offer tradepartner="$tradePartner" seller="$container" wares="$ware" result="$offerResult">
               <price min="$minPrice" max="$maxPrice"/>
               <amount min="$wareAmount"/>
-              <match_seller tradesknownto="this.owner" />
+              <match_seller tradesknownto="$tradePartner.trueowner" />
             </find_sell_offer>
           </do_else>
 
@@ -230,7 +232,7 @@
             <find_buy_offer tradepartner="$tradePartner" wares="$ware" space="$offerSpace" result="$foundOffers" multiple="true">
               <price min="$minPrice" max="$maxPrice"/>
               <amount min="$wareAmount"/>
-              <match_buyer owner="$allowedFactions" tradesknownto="this.owner" >
+              <match_buyer owner="$allowedFactions" tradesknownto="$tradePartner.trueowner" >
                 <match_use_blacklist group="$blacklistGroup" type="blacklisttype.objectactivity" object="$tradePartner"/>
               </match_buyer>
             </find_buy_offer>
@@ -239,7 +241,7 @@
             <find_sell_offer tradepartner="$tradePartner" wares="$ware" space="$offerSpace" result="$foundOffers" multiple="true">
               <price min="$minPrice" max="$maxPrice"/>
               <amount min="$wareAmount"/>
-              <match_seller owner="$allowedFactions" tradesknownto="this.owner">
+              <match_seller owner="$allowedFactions" tradesknownto="$tradePartner.trueowner">
                 <match_use_blacklist group="$blacklistGroup" type="blacklisttype.objectactivity" object="$tradePartner"/>
               </match_seller>
             </find_sell_offer>
@@ -249,7 +251,10 @@
           <do_if value="$foundOffers.count gt 0">
 
             <do_for_each name="$offer" in="$foundOffers">
-              <append_to_list name="$results" exact="$offer"/>
+              <!-- Dupe check. Make sure the offer only makes the list once. Possible to have dupes when priority stations are passed in. -->
+              <do_if value="$results.indexof.{$offer} == 0">
+                <append_to_list name="$results" exact="$offer"/>
+              </do_if>              
 
               <do_if value="$results.count ge $maxAmountOfOffers">
                 <!-- If we've hit our limit, we can just peace out. -->

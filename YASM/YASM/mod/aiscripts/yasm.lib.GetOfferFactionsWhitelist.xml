@@ -1,0 +1,74 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<!-- Gets a whitelist of allowed factions from an offer. Uses the buyer/seller of an offer as the reference object for faction relations (hostile factions are automatically excluded) -->
+<aiscript name="yasm.lib.GetOfferFactionsWhitelist" version="1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="aiscripts.xsd">
+  <params>
+    <param name="offer" default="null" comment="The offer to get a faction whitelist for."/>
+  </params>
+  <init>
+    <set_value name="$errorMessage" exact="'Unspecified'"/>
+    <set_value name="$results" exact="[]"/>
+  </init>
+  <attention min="unknown">
+    <actions>
+      <!-- Parameter validation -->
+      <do_if value="$offer == null">
+        <set_value name="$errorMessage" exact="'ffer was null!'"/>
+
+        <return>
+          <retval name="wasErrorFree" value="false"/>
+          <retval name="errorMessage" value="$errorMessage"/>
+          <retval name="results" value="$results"/>
+        </return>
+      </do_if>
+      
+      <!-- Main Logic -->
+      <!-- Get the right refObject depending on if buy or sell offer. -->
+      <do_if value="$offer.buyer.exists">
+        <set_value name="$refObject" exact="$offer.buyer"/>
+      </do_if>
+      <do_else>
+        <set_value name="$refObject" exact="$offer.seller"/>
+      </do_else>
+      
+      
+      <!-- If the offer restrictions are inverted, they are a blacklist and we'll need to get a list of all factions and remove matching entries from it. -->
+      <do_if value="$offer.restriction.inverted">
+        
+        <get_factions_by_relation object="$refObject" relation="dock" result="$allFactions"/>
+
+        <do_if value="$allFactions.count lt 1">
+          <!-- Nobody can trade this ware. Just finish up.-->
+          <resume label="finish"/>
+        </do_if>
+
+        <do_for_each name="$faction" in="$allFactions">
+
+          <!-- If it's not in the restriction list, it can be added to results. -->
+          <do_if value="$offer.restriction.factions.indexof.{$faction} == 0">
+            <append_to_list name="$results" exact="$faction"/>
+          </do_if>
+        </do_for_each>
+        
+      </do_if>
+      <do_else>
+        <!-- The restriction is not inverted, If it's empty that means no restrictions (and thus all non-hostile factions are valid) -->
+        <do_if value="$offer.restriction.factions.count lt 1">
+          <get_factions_by_relation object="$refObject" relation="dock" result="$allFactions"/>
+          <set_value name="$results" exact="$allFactions"/>
+        </do_if>
+        <do_else>
+          <!-- If it has results, then it's a whitelist restriction and can just be assigned as the result.  -->
+          <set_value name="$results" exact="$offer.restriction.factions"/>
+        </do_else>
+      </do_else>
+
+      <label name="finish"/>
+
+      <return>
+        <retval name="wasErrorFree" value="true"/>
+        <retval name="errorMessage" value="$errorMessage"/>
+        <retval name="results" value="$results"/>
+      </return>
+    </actions>
+  </attention>
+</aiscript>

@@ -17,7 +17,8 @@
       <param name="exportToOtherStationsFirst" required="false" type="bool" default="true" text="{966602,207}" comment="Try to deliver exports to other stations in range that need them before hauling to trade partner." />
       <param name="prioritizeBuidlStorage" required="false" type="bool" default="false" text="{966602,208}" comment="When searching for imports to bring to the station, should build storage be prioritized?" />
       <param name="serviceOtherStationsWhenIdle" required="false" type="bool" default="false" text="{966602,209}" comment="Whether this ship should attempt to service other stations (roam) when it has nothing else to do." />
-      <param name="maxJumpRange" required="false" type="number" default="0"  text="{966602,210}" comment="The absolute maximum jumping range to be considered for roaming transports">
+      <param name="prioritizeSupplies" required="false" type="bool" default="false" text="{966602,210}" comment="Whether the ship should prioritize supplies (drone components and such) over other imports." />
+      <param name="maxJumpRange" required="false" type="number" default="0"  text="{966602,211}" comment="The absolute maximum jumping range to be considered for roaming transports">
         <!--We don't want mules covering large areas of space. So the maximum a station mule will ever travel will be 5 jumps. Use a roaming mule for farther distance.-->
         <input_param name="startvalue" value="6"/>
         <input_param name="min" value="0"/>
@@ -25,7 +26,7 @@
         <input_param name="step" value ="1"/>
       </param>
       <!-- This is currently bugged. A wares list after a required parameter breaks the UI for default orders. Wares lists (probably lists in general) break when there's another param that's required. -->
-      <!--<param name="WareWhitelist" required="false" default="[]" type="list" text="{966602,211}" comment="Allows the player to limit what wares the station mule will haul. When set only these wares will be looked at, even if they aren't offered at the home or trade partner.">
+      <!--<param name="WareWhitelist" required="false" default="[]" type="list" text="{966602,212}" comment="Allows the player to limit what wares the station mule will haul. When set only these wares will be looked at, even if they aren't offered at the home or trade partner.">
         <input_param name="type" value="'ware'" />
         <input_param name="cancarry" value="this.ship" />
       </param>-->
@@ -43,7 +44,7 @@
     <library>
       <actions name="yasm.order.StationMule.CalculateJumpRange">
         <!-- 
-             Jump range is initially dependant on the pilot's skill. This will, alone, be a max range of 3. The home station's manager skill
+             Jump range is initially Dependant on the pilot's skill. This will, alone, be a max range of 3. The home station's manager skill
              is additive, adding up to another 3 max jumps.
         -->
         <!-- Doing the jump range using do_ifs instead of a fancy one liner with several nested .max's for readability. -->        
@@ -158,6 +159,7 @@
     <debug_to_file name="$debugFileName" directory="$debugFileDirectory" text="'[YASM General] Management priority screwup chance is %1'.[$commanderPriorityScrewupChance]" append="true" chance="$debugChance" />
 
     <!-- Last bit of init stuff. -->
+    <set_value name="$offerMatchBufferMax" exact="3"/>
     <set_value name="$waitOrderTime" exact="1h"/>
     <set_command_action commandaction="commandaction.calculating" />
     <include_interrupt_actions ref="GetBlacklistgroup"/>
@@ -532,6 +534,21 @@
             fill a significant amount of the hull.           
         -->
 
+        <!-- Build a set of import matches. Hold on to 2-3 imports/sell offer pairs tops. This is just in case the top one has gone unavailable or had amounts lowered below thresholds.-->
+        <set_value name="$importMatches" exact="table[]"/>
+        
+        <!-- Start with supplies if they're prioritized. -->        
+        <do_if value="$prioritizeSupplies and $importPriorityResultTable.$supplyBuys.count gt 0">
+          <!-- There are supplies. In this case I'm high prioritizing them. That decision might change or be made into a parameter. -->
+          <!-- TODO: Note, when checking for a specific ware, need to see if the player is actually allowed to trade it. -->
+        </do_if>
+
+
+        <!-- If supplies aren't explicitly prioritized, treat them like vanilla secondary wares. Lowest priority. -->
+        <do_if value="not $prioritizeSupplies and $importMatches.keys.count lt $offerMatchBufferMax and $importPriorityResultTable.$supplyBuys.count gt 0">
+          <!-- TODO: This.  -->
+        </do_if>
+        
         <!-- If ExportToOtherStationsFirst check stations other than the trade partner stations in range and make a list of matches (sort by distance to home if possible), if there's nothing or this option is not set, check the trade partner station -->
 
 

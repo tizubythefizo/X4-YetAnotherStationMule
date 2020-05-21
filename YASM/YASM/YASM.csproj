@@ -49,6 +49,8 @@
     </None>
   </ItemGroup>
   <ItemGroup>
+    <Content Include="mod\aiscripts\yasm.lib.FindMatchingOffers.xml" />
+    <Content Include="mod\aiscripts\yasm.lib.GetOfferFactionsWhitelist.xml" />
     <Content Include="mod\aiscripts\yasm.lib.GetWarePriorities.xml" />
     <Content Include="mod\aiscripts\yasm.lib.AddStationTradewares.xml" />
     <Content Include="mod\aiscripts\yasm.lib.DumpWares.xml" />

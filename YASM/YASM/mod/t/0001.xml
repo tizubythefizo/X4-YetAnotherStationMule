@@ -16,8 +16,9 @@
     <t id="207">Export to other stations first</t>
     <t id="208">Prioritize Build Storage</t>
     <t id="209">Roam if idle</t>
-    <t id="210">Max Jump Distance</t>
-    <t id="211">Ware Whitelist</t>
+    <t id="210">Prioritize Supplies</t>
+    <t id="211">Max Jump Distance</t>
+    <t id="212">Ware Whitelist</t>
     <!-- Other stuff. -->
     <t id="230">Ship is not a valid type for this order.</t>
     <t id="240">Wares added as trade wares to %1-%2</t>

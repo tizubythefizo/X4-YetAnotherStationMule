@@ -1,0 +1,298 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<aiscript name="yasm.lib.FindMatchingOffers" version="1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="aiscripts.xsd">
+  <params>
+    <param name="offer" default="null" comment="The offer to find matches for."/>
+    <param name="allowedFactions" default="[]" comment="The factions that are allowed to be searched for matching offers."/>
+    <param name="sortByPrice" default="false" comment="Whether the list of returned offers should be sorted by price or not (priority stations, if present, will always be at the top of the result list)."/>
+    <param name="maxAmountOfOffers" default="1" comment="The maximum amount of matching offers to find." />
+    <param name="minimumOfferAmount" default="1" comment="The minimum amount of goods an offer should have ($offer.amount)"/>
+    <param name="tradePartner" default="null" comment="The trade partner for finding offers. Should be a container."/>
+    <param name="rangeRefObject" default="null" comment="The object whose position to use when finding in range sectors."/>
+    <param name="minGateDistance" default="0" comment="The minimum gate distance to search for offers."/>
+    <param name="maxGateDistance" default="0" comment="The maximum jump range to search for offers."/>
+    <param name="blacklistGroup" default="null" comment="The blacklist group to use for finding offers."/>
+    <param name="prioritizedContainers" default="[]" comment="Optional: If provided, will attempt to find matches on these specific containers first."/>
+  </params>
+  <init>
+    <set_value name="$debugChance" exact="100"/>
+    <set_value name="$wasErrorFree" exact="false"/>
+    <set_value name="$errorMessage" exact="'Unspecified'"/>
+    <set_value name="$results" exact="[]"/>
+  </init>
+  <attention min="unknown">
+    <actions>
+      <!-- Parameter Validation -->
+      <do_if value="$offer == null">
+        <set_value name="$errorMessage" exact="'[yasm.lib.FindMatchingOffers] offer parameter was null!'"/>
+
+        <return>
+          <retval name="wasErrorFree" value="false"/>
+          <retval name="errorMessage" value="$errorMessage"/>
+          <retval name="results" value="$results"/>
+        </return>
+      </do_if>
+
+      <do_if value="typeof $allowedFactions != datatype.list or $allowedFactions.count lt 1">
+        <set_value name="$errorMessage" exact="'[yasm.lib.FindMatchingOffers] allowedFactions was either not a list or was an empty list. Must provide at least 1 faction.'"/>
+
+        <return>
+          <retval name="wasErrorFree" value="false"/>
+          <retval name="errorMessage" value="$errorMessage"/>
+          <retval name="results" value="$results"/>
+        </return>
+      </do_if>
+
+      <do_if value="(typeof $maxAmountOfOffers).isnumeric == false or $maxAmountOfOffers lt 1">
+        <set_value name="$errorMessage" exact="'[yasm.lib.FindMatchingOffers] maxAmountOfWares was non-numeric or out of range (less than 1)!'"/>
+
+        <return>
+          <retval name="wasErrorFree" value="false"/>
+          <retval name="errorMssage" value="$errorMessage"/>
+        </return>
+      </do_if>
+
+      <do_if value="(typeof $minimumOfferAmount).isnumeric == false or $minimumOfferAmount lt 1">
+        <set_value name="$errorMessage" exact="'[yasm.lib.FindMatchingOffers] minimumOfferAmount was non-numeric or out of range (less than 1)!'"/>
+
+        <return>
+          <retval name="wasErrorFree" value="false"/>
+          <retval name="errorMssage" value="$errorMessage"/>
+        </return>
+      </do_if>
+
+      <do_if value="$tradePartner.isclass.container == false">
+        <set_value name="$errorMessage" exact="'[yasm.lib.FindMatchingOffers] tradePartner was null or not a container!'"/>
+
+        <return>
+          <retval name="wasErrorFree" value="false"/>
+          <retval name="errorMssage" value="$errorMessage"/>
+        </return>
+      </do_if>
+
+      <do_if value="typeof $prioritizedContainers != datatype.list">
+        <set_value name="$errorMessage" exact="'[yasm.lib.FindMatchingOffers] prioritizedContainers was either not a list!'"/>
+
+        <return>
+          <retval name="wasErrorFree" value="false"/>
+          <retval name="errorMessage" value="$errorMessage"/>
+          <retval name="results" value="$results"/>
+        </return>
+      </do_if>
+
+      <do_if value="$rangeRefObject == null">
+        <!-- TODO: Find a better thing to use than null. There's probably actually a class or something that can be used instead. -->
+        <set_value name="$errorMessage" exact="'[yasm.lib.FindMatchingOffers] rangeRefObject was null!'"/>
+
+        <return>
+          <retval name="wasErrorFree" value="false"/>
+          <retval name="errorMessage" value="$errorMessage"/>
+          <retval name="results" value="$results"/>
+        </return>
+      </do_if>
+
+      <do_if value="(typeof $minGateDistance).isnumeric == false or $minGateDistance lt 0">
+        <set_value name="$errorMessage" exact="'[yasm.lib.FindMatchingOffers] minGateDistance was non-numeric or out of range (less than 0)!'"/>
+
+        <return>
+          <retval name="wasErrorFree" value="false"/>
+          <retval name="errorMssage" value="$errorMessage"/>
+          <retval name="results" value="$results"/>
+        </return>
+      </do_if>
+
+      <do_if value="(typeof $maxGateDistance).isnumeric == false or $maxGateDistance lt 0">
+        <set_value name="$errorMessage" exact="'[yasm.lib.FindMatchingOffers] maxGateDistance was non-numeric or out of range (less than 1)!'"/>
+
+        <return>
+          <retval name="wasErrorFree" value="false"/>
+          <retval name="errorMssage" value="$errorMessage"/>
+          <retval name="results" value="$results"/>
+        </return>
+      </do_if>
+
+      <!-- One last check for min/max distance -->
+      <do_if value="$minGateDistance gt $maxGateDistance">
+        <set_value name="$errorMessage" exact="'[yasm.lib.FindMatchingOffers] minGateDistance is larger than maxGateDistance! That cannot be!'"/>
+
+        <return>
+          <retval name="wasErrorFree" value="false"/>
+          <retval name="errorMssage" value="$errorMessage"/>
+          <retval name="results" value="$results"/>
+        </return>
+      </do_if>
+
+      <do_if value="typeof $blacklistGroup != datatype.blacklistgroup">
+        <set_value name="$errorMessage" exact="'[yasm.lib.FindMatchingOffers] blacklistGroup was null or not a group!'"/>
+
+        <return>
+          <retval name="wasErrorFree" value="false"/>
+          <retval name="errorMssage" value="$errorMessage"/>
+          <retval name="results" value="$results"/>
+        </return>
+      </do_if>
+
+      <debug_text text="'$offer datatype is %1'.[typeof $offer]" filter="general" chance="$debugChance"/>
+
+      <!-- Main Logic -->
+
+      <set_value name="$isBuy" exact="false"/>
+
+      <do_if value="$offer.buyer.exists">
+        <set_value name="$isBuy" exact="true"/>
+      </do_if>
+
+      <!-- First, check priority stations and section them into their own temporary results list. -->
+      <set_value name="$priorityOffers" exact="[]"/>
+
+      <do_if value="$prioritizedContainers.count gt 0">
+        <do_for_each name="$priorityContainer" in="$prioritizedContainers">
+          <set_value name="$foundOffer" exact="null"/>
+
+          <!-- Searching specific stations, so no need to blacklist. Allowed factions does need to be checked though due to new trade rules (even on specified stations). -->
+          <do_if value="$isBuy">
+            <find_sell_offer seller="$priorityContainer" tradepartner="$tradePartner" wares="$offer.ware" result="$foundOffer">
+              <amount min="$minimumOfferAmount"/>
+              <match_seller owner="$allowedFactions" tradesknownto="$tradePartner.trueowner" />
+            </find_sell_offer>
+          </do_if>
+          <do_else>
+            <find_buy_offer buyer="$priorityContainer" tradepartner="$tradePartner" wares="$offer.ware" result="$foundOffer">
+              <amount min="$minimumOfferAmount"/>
+              <match_buyer owner="$allowedFactions" tradesknownto="$tradePartner.trueowner" />
+            </find_buy_offer>
+          </do_else>
+
+          <do_if value="$foundOffer != null">
+            <append_to_list name="$priorityOffers" exact="$foundOffer"/>
+
+            <!-- If we get enough offers just from prioritized, we can end the loop early. -->
+            <do_if value="$priorityOffers ge $maxAmountOfOffers">
+              <break/>
+            </do_if>
+          </do_if>
+        </do_for_each>
+
+        <do_if value="$priorityOffers.count gt 1">
+
+          <do_if value="$sortByPrice">
+            <do_if value="$isBuy">
+              <sort_list list="$priorityOffers" sortbyvalue="loop.element.unitprice" sortdescending="false"/>
+            </do_if>
+            <do_else>
+              <sort_list list="$priorityOffers" sortbyvalue="loop.element.unitprice" sortdescending="true"/>
+            </do_else>
+          </do_if>
+
+
+          <do_if value="$priorityOffers.count ge $maxAmountOfOffers">
+            <!-- List is sorted (if needed), so assign it as results and finish. -->
+            <set_value name="$results" exact="$priorityOffers"/>
+            <resume label="finish"/>
+          </do_if>
+          <do_else>
+            <!-- There's still more work to do, as we don't have enough offers. Stick everything into results and continue the code. -->
+            <append_list_elements name="$results" other="$priorityOffers"/>
+          </do_else>
+        </do_if>
+
+      </do_if>
+
+      <!-- Next, do all stations of allowed factions within the jump range, by sector. -->
+      <set_value name="$offerSpaces" exact="[]"/>
+
+      <run_script name="'lib.find.sectors.inrange'" result="$offerSpaces">
+        <param name="refobject" value="$rangeRefObject"/>
+        <param name="mingatedistance" value="$minGateDistance"/>
+        <param name="maxgatedistance" value="$maxGateDistance"/>
+        <param name="applyblacklist" value="true"/>
+        <param name="blacklistgroup" value="$blacklistGroup"/>
+        <param name="debugchance" value="0"/>
+      </run_script>
+
+      <!-- There should always be at least one offer space. This could should never trip by normal means, but could potentially be caused by unknown errors in lib.find.sectors-->
+      <do_if value="$offerSpaces.count lt 0">
+        <set_value name="$errorMessage" exact="'[yasm.lib.FindMatchingOffers] There were no sectors found to search given the passed in parameters! No valid areas to search for offers!'"/>
+
+        <return>
+          <retval name="wasErrorFree" value="false"/>
+          <retval name="errorMssage" value="$errorMessage"/>
+          <retval name="results" value="$results"/>
+        </return>
+      </do_if>
+
+      <!-- We've got some good offer spaces, let's start running 'em through. -->
+      <set_value name="$areaOffers" exact="[]"/>
+
+      <do_for_each counter="$space" in="$offerSpaces">
+        <set_value name="$foundOffers" exact="[]"/>
+
+        <!-- Get the list of buy/sell offers -->
+        <do_if value="$isBuy">
+          <find_sell_offer tradepartner="$tradePartner" wares="$offer.ware" space="$space" multiple="true" result="$foundOffers">
+            <amount min="$minimumOfferAmount"/>
+            <match_seller owner="$allowedFactions" tradesknownto="$tradePartner.trueowner">
+              <match_use_blacklist group="$blacklistGroup" type="blacklisttype.objectactivity" object="$tradePartner"/>
+            </match_seller>
+          </find_sell_offer>
+        </do_if>
+        <do_else>
+          <find_buy_offer tradepartner="$tradePartner" wares="$offer.ware" space="$space" multiple="true" result="$foundOffers">
+            <amount min="$minimumOfferAmount"/>
+            <match_buyer owner="$allowedFactions" tradesknownto="$tradePartner.trueowner">
+              <match_use_blacklist group="$blacklistGroup" type="blacklisttype.objectactivity" object="$tradePartner"/>
+            </match_buyer>
+          </find_buy_offer>
+        </do_else>
+
+        <do_if value="$foundOffers.count gt 0">
+
+          <!-- Need to iterate and make sure we don't have dupes. By this point priority containers are already in results, so search that. -->
+          <do_for_each name="$foundOffer" in="$foundOffers">
+            <do_if value="$results.indexof.{$foundOffer} == 0">
+              <append_to_list name="$areaOffers" exact="$foundOffer"/>
+            </do_if>
+          </do_for_each>
+
+          <!-- Check to see if we care about prices, and if not do we have enough offers existing in results + areaOffers to fill the caller's request.-->
+          <do_if value="not $sortByPrice and ($results.count + $areaOffers.count) ge $maxAmountOfOffers">
+            <break/>
+          </do_if>
+        </do_if>
+      </do_for_each>
+
+      <!-- If we found some area offers, sort them if needed then append them to the results list. -->
+      <do_if value="$sortByPrice">
+        <do_if value="$isBuy">
+          <sort_list list="$areaOffers" sortbyvalue="loop.element.unitprice" sortdescending="false"/>
+        </do_if>
+        <do_else>
+          <sort_list list="$areaOffers" sortbyvalue="loop.element.unitprice" sortdescending="true"/>
+        </do_else>
+      </do_if>
+      
+      <!-- Finally, loop through and add offers until we've reached max amount. -->
+      <do_if value="($results.count + $areaOffers.count) le $maxAmountOfOffers">
+        <append_list_elements name="$results" other="$areaOffers"/>
+      </do_if>
+      <do_else>
+        <!-- Need to loop and stop when we hit max amount. -->
+        <do_for_each name="$areaOffer" in="$areaOffers">
+          <append_to_list name="$results" exact="$areaOffer"/>
+
+          <do_if value="$results.count ge $maxAmountOfOffers">
+            <break/>
+          </do_if>
+        </do_for_each>
+      </do_else>
+
+      <label name="finish"/>
+      <set_value name="$wasErrorFree" exact="true"/>
+
+      <return>
+        <retval name="wasErrorFree" value="true"/>
+        <retval name="errorMssage" value="$errorMessage"/>
+        <retval name="results" value="$results"/>
+      </return>
+    </actions>
+  </attention>
+</aiscript>
